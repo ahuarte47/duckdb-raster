@@ -4,20 +4,15 @@
 
 # Before we load the extension, this will fail
 statement error
-SELECT raster('Sam');
+SELECT * FROM RT_Drivers();
 ----
-Catalog Error: Scalar Function with name raster does not exist!
+Catalog Error: Table Function with name rt_drivers does not exist!
 
 # Require statement will ensure this test is run with this extension loaded
 require raster
 
 # Confirm the extension works
 query I
-SELECT raster('Sam');
+SELECT count(*) FROM RT_Drivers() WHERE short_name = 'GTiff'
 ----
-Raster Sam 🐥
-
-query I
-SELECT raster_openssl_version('Michael') ILIKE 'Raster Michael, my linked OpenSSL version is OpenSSL%';
-----
-true
+1

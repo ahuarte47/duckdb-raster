@@ -1,58 +1,97 @@
-# Raster
+# DuckDB Raster Extension
 
-This repository is based on https://github.com/duckdb/extension-template, check it out if you want to build and ship your own DuckDB extension.
+## What is this?
 
----
+This is an extension for DuckDB for reading and writing raster files data using SQL.
 
-This extension, Raster, allow you to ... <extension_goal>.
+## How do I get it?
 
+### Loading from community (TODO)
 
-## Building
-### Managing dependencies
-DuckDB extensions uses VCPKG for dependency management. Enabling VCPKG is very simple: follow the [installation instructions](https://vcpkg.io/en/getting-started) or just run the following:
-```shell
-git clone https://github.com/Microsoft/vcpkg.git
-./vcpkg/bootstrap-vcpkg.sh
-export VCPKG_TOOLCHAIN_PATH=`pwd`/vcpkg/scripts/buildsystems/vcpkg.cmake
+The DuckDB **Raster Extension** is available as a signed [community extension](https://duckdb.org/community_extensions/list_of_extensions).
+See more details on its [DuckDB CE web page](https://duckdb.org/community_extensions/extensions/raster.html).
+
+To install and load it, you can run the following SQL commands in DuckDB:
+
+```sql
+INSTALL raster FROM community;
+LOAD raster;
 ```
-Note: VCPKG is only required for extensions that want to rely on it for dependency management. If you want to develop an extension without dependencies, or want to do your own dependency management, just skip this step. Note that the example extension uses VCPKG to build with a dependency for instructive purposes, so when skipping this step the build may not work without removing the dependency.
 
-### Build steps
-Now to build the extension, run:
-```sh
-make
+### Building from source
+
+This extension is based on the [DuckDB extension template](https://github.com/duckdb/extension-template).
+
+## Example Usage
+
+First, make sure to load the extension in your DuckDB session.
+
+Then you can use the extension to read and write raster files data using SQL.
+
+This is the list of available functions:
+
++ ### RT_Drivers
+
+    Returns the list of supported GDAL raster drivers.
+
+    ```sql
+	SELECT short_name, long_name, help_url FROM RT_Drivers();
+
+	┌────────────────┬──────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────┐
+	│   short_name   │                        long_name                         │                      help_url                       │
+	│    varchar     │                         varchar                          │                       varchar                       │
+	├────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────┤
+	│ VRT            │ Virtual Raster                                           │ https://gdal.org/drivers/raster/vrt.html            │
+	│ DERIVED        │ Derived datasets using VRT pixel functions               │ https://gdal.org/drivers/raster/derived.html        │
+	│ GTI            │ GDAL Raster Tile Index                                   │ https://gdal.org/drivers/raster/gti.html            │
+	│ SNAP_TIFF      │ Sentinel Application Processing GeoTIFF                  │ https://gdal.org/drivers/raster/snap_tiff.html      │
+	│ GTiff          │ GeoTIFF                                                  │ https://gdal.org/drivers/raster/gtiff.html          │
+	│ COG            │ Cloud optimized GeoTIFF generator                        │ https://gdal.org/drivers/raster/cog.html            │
+	│  ·             │          ·                                               │                    ·                                │
+	│  ·             │          ·                                               │                    ·                                │
+	│  ·             │          ·                                               │                    ·                                │
+	│ ENVI           │ ENVI .hdr Labelled                                       │ https://gdal.org/drivers/raster/envi.html           │
+	│ EHdr           │ ESRI .hdr Labelled                                       │ https://gdal.org/drivers/raster/ehdr.html           │
+	│ ISCE           │ ISCE raster                                              │ https://gdal.org/drivers/raster/isce.html           │
+	│ Zarr           │ Zarr                                                     │ NULL                                                │
+	│ HTTP           │ HTTP Fetching Wrapper                                    │ NULL                                                │
+	└────────────────┴──────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────┘
+    ```
+
+### Supported Functions and Documentation
+
+The full list of functions and their documentation is available in the [function reference](docs/functions.md)
+
+## How do I build it?
+
+### Dependencies
+
+You need a recent version of CMake (3.5) and a C++14 compatible compiler.
+
+We also highly recommend that you install [Ninja](https://ninja-build.org) which you can select when building by setting the `GEN=ninja` environment variable.
 ```
-The main binaries that will be built are:
-```sh
+git clone --recurse-submodules https://github.com/ahuarte47/duckdb-raster
+cd duckdb-raster
+make release
+```
+
+You can then invoke the built DuckDB (with the extension statically linked)
+```
 ./build/release/duckdb
-./build/release/test/unittest
-./build/release/extension/raster/raster.duckdb_extension
-```
-- `duckdb` is the binary for the duckdb shell with the extension code automatically loaded.
-- `unittest` is the test runner of duckdb. Again, the extension is already linked into the binary.
-- `raster.duckdb_extension` is the loadable binary as it would be distributed.
-
-## Running the extension
-To run the extension code, simply start the shell with `./build/release/duckdb`.
-
-Now we can use the features from the extension directly in DuckDB. The template contains a single scalar function `raster()` that takes a string arguments and returns a string:
-```
-D select raster('Jane') as result;
-┌───────────────┐
-│    result     │
-│    varchar    │
-├───────────────┤
-│ Raster Jane 🐥 │
-└───────────────┘
 ```
 
-## Running the tests
+Please see the Makefile for more options, or the extension template documentation for more details.
+
+### Running the tests
+
 Different tests can be created for DuckDB extensions. The primary way of testing DuckDB extensions should be the SQL tests in `./test/sql`. These SQL tests can be run using:
+
 ```sh
 make test
 ```
 
 ### Installing the deployed binaries
+
 To install your extension binaries from S3, you will need to do two things. Firstly, DuckDB should be launched with the
 `allow_unsigned_extensions` option set to true. How to set this will depend on the client you're using. Some examples:
 
@@ -85,18 +124,4 @@ INSTALL raster;
 LOAD raster;
 ```
 
-## Setting up CLion
-
-### Opening project
-Configuring CLion with this extension requires a little work. Firstly, make sure that the DuckDB submodule is available.
-Then make sure to open `./duckdb/CMakeLists.txt` (so not the top level `CMakeLists.txt` file from this repo) as a project in CLion.
-Now to fix your project path go to `tools->CMake->Change Project Root`([docs](https://www.jetbrains.com/help/clion/change-project-root-directory.html)) to set the project root to the root dir of this repo.
-
-### Debugging
-To set up debugging in CLion, there are two simple steps required. Firstly, in `CLion -> Settings / Preferences -> Build, Execution, Deploy -> CMake` you will need to add the desired builds (e.g. Debug, Release, RelDebug, etc). There's different ways to configure this, but the easiest is to leave all empty, except the `build path`, which needs to be set to `../build/{build type}`, and CMake Options to which the following flag should be added, with the path to the extension CMakeList:
-
-```
--DDUCKDB_EXTENSION_CONFIGS=<path_to_the_exentension_CMakeLists.txt>
-```
-
-The second step is to configure the unittest runner as a run/debug configuration. To do this, go to `Run -> Edit Configurations` and click `+ -> Cmake Application`. The target and executable should be `unittest`. This will run all the DuckDB tests. To specify only running the extension specific tests, add `--test-dir ../../.. [sql]` to the `Program Arguments`. Note that it is recommended to use the `unittest` executable for testing/development within CLion. The actual DuckDB CLI currently does not reliably work as a run target in CLion.
+Enjoy!

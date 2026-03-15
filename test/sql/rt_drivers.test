@@ -1,0 +1,19 @@
+# name: test/sql/rt_drivers.test
+# description: test spatial_raster extension
+# group: [sql]
+
+require raster
+
+# Confirm the extension works
+query I
+SELECT
+    short_name
+FROM
+    RT_Drivers()
+WHERE
+    short_name IN ('COG', 'GTiff')
+ORDER BY
+    short_name;
+----
+COG
+GTiff

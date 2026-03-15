@@ -6,35 +6,17 @@
 #include "duckdb/function/scalar_function.hpp"
 #include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
 
-// OpenSSL linked through vcpkg
-#include <openssl/opensslv.h>
+// GDAL/Raster
+#include "raster/gdal_module.hpp"
+#include "raster/raster_table_functions.hpp"
 
 namespace duckdb {
 
-inline void RasterScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &name_vector = args.data[0];
-	UnaryExecutor::Execute<string_t, string_t>(name_vector, result, args.size(), [&](string_t name) {
-		return StringVector::AddString(result, "Raster " + name.GetString() + " 🐥");
-	});
-}
-
-inline void RasterOpenSSLVersionScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &name_vector = args.data[0];
-	UnaryExecutor::Execute<string_t, string_t>(name_vector, result, args.size(), [&](string_t name) {
-		return StringVector::AddString(result, "Raster " + name.GetString() + ", my linked OpenSSL version is " +
-		                                           OPENSSL_VERSION_TEXT);
-	});
-}
-
 static void LoadInternal(ExtensionLoader &loader) {
-	// Register a scalar function
-	auto raster_scalar_function = ScalarFunction("raster", {LogicalType::VARCHAR}, LogicalType::VARCHAR, RasterScalarFun);
-	loader.RegisterFunction(raster_scalar_function);
-
-	// Register another scalar function
-	auto raster_openssl_version_scalar_function = ScalarFunction("raster_openssl_version", {LogicalType::VARCHAR},
-	                                                            LogicalType::VARCHAR, RasterOpenSSLVersionScalarFun);
-	loader.RegisterFunction(raster_openssl_version_scalar_function);
+	// Register the GDAL module for RASTER
+	GdalModule::Register(loader);
+	// Register table functions
+	RasterTableFunctions::Register(loader);
 }
 
 void RasterExtension::Load(ExtensionLoader &loader) {
