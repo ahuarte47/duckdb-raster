@@ -1,0 +1,23 @@
+# name: test/sql/raster.test
+# description: test raster extension
+# group: [sql]
+
+# Before we load the extension, this will fail
+statement error
+SELECT raster('Sam');
+----
+Catalog Error: Scalar Function with name raster does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require raster
+
+# Confirm the extension works
+query I
+SELECT raster('Sam');
+----
+Raster Sam 🐥
+
+query I
+SELECT raster_openssl_version('Michael') ILIKE 'Raster Michael, my linked OpenSSL version is OpenSSL%';
+----
+true
