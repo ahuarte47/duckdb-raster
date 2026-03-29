@@ -1,4 +1,8 @@
 set(EXTENSION_SOURCES
-    ${EXTENSION_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/gdal_module.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raster_table_functions.cpp
+    ${EXTENSION_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/gdal_module.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raster_types.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raster_utils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raster_drivers_function.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raster_read_function.cpp
     PARENT_SCOPE)

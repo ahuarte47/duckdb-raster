@@ -1,0 +1,62 @@
+# name: test/sql/rt_read.test
+# description: test spatial_raster extension
+# group: [sql]
+
+require raster
+
+query I
+SELECT
+    COUNT(id)
+FROM
+    RT_Read('./test/data/overlay-sample.tiff')
+;
+----
+23
+
+query IIII
+SELECT
+    bbox.xmin AS xmin,
+    bbox.ymin AS ymin,
+    bbox.xmax AS xmax,
+    bbox.ymax AS ymax
+FROM
+    RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+;
+----
+545539.75	4724420.25	545699.75	4724510.25
+
+query I
+SELECT
+    COUNT(id)
+FROM
+    RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+;
+----
+1
+
+query I
+SELECT
+    id
+FROM
+    RT_Read('./test/data/overlay-sample.tiff')
+LIMIT 3 OFFSET 5
+;
+----
+5
+6
+7
+
+query I
+SELECT
+    id
+FROM
+    RT_Read('./test/data/overlay-sample.tiff')
+WHERE
+    ((id >= 5 AND id <= 7) AND x <> 0) OR (y > 0 AND id IN (11,12))
+;
+----
+5
+6
+7
+11
+12

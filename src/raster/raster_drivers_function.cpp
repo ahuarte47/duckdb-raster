@@ -1,32 +1,15 @@
-#include "raster_table_functions.hpp"
+#include "raster_drivers_function.hpp"
 #include "function_builder.hpp"
 
 // DuckDB
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
-#include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/parsed_data/create_copy_function_info.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
+
 // GDAL
 #include "gdal_priv.h"
-
-// Debug logging controlled by RASTER_DEBUG environment variable
-static int GetDebugLevel() {
-	static int level = -1;
-	if (level == -1) {
-		const char *env = std::getenv("RASTER_DEBUG");
-		level = env ? std::atoi(env) : 0;
-	}
-	return level;
-}
-
-#define RASTER_SCAN_DEBUG_LOG(level, fmt, ...)                                                                         \
-	do {                                                                                                               \
-		if (GetDebugLevel() >= level) {                                                                                \
-			fprintf(stderr, "RASTER: " fmt "\n", ##__VA_ARGS__);                                                       \
-		}                                                                                                              \
-	} while (0)
 
 namespace duckdb {
 
@@ -84,14 +67,14 @@ struct RT_Drivers {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Execute(ClientContext &context, TableFunctionInput &input, DataChunk &output) {
-		auto &state = input.global_state->Cast<State>();
 		auto &bind_data = input.bind_data->Cast<BindData>();
+		auto &gstate = input.global_state->Cast<State>();
 
 		idx_t count = 0;
-		auto next_idx = MinValue<idx_t>(state.current_idx + STANDARD_VECTOR_SIZE, bind_data.driver_count);
+		auto next_idx = MinValue<idx_t>(gstate.current_idx + STANDARD_VECTOR_SIZE, bind_data.driver_count);
 
-		for (; state.current_idx < next_idx; state.current_idx++) {
-			auto driver = GDALGetDriver(static_cast<int>(state.current_idx));
+		for (; gstate.current_idx < next_idx; gstate.current_idx++) {
+			auto driver = GDALGetDriver(static_cast<int>(gstate.current_idx));
 
 			// Check if the driver is a raster driver
 			if (GDALGetMetadataItem(driver, GDAL_DCAP_RASTER, nullptr) == nullptr) {
@@ -159,10 +142,10 @@ struct RT_Drivers {
 } // namespace
 
 // #####################################################################################################################
-// Register Data Functions
+// Register Drivers Function
 // #####################################################################################################################
 
-void RasterTableFunctions::Register(ExtensionLoader &loader) {
+void RasterDriversFunction::Register(ExtensionLoader &loader) {
 	// Register functions
 	RT_Drivers::Register(loader);
 }

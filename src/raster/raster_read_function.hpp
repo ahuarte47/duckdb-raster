@@ -4,7 +4,7 @@ namespace duckdb {
 
 class ExtensionLoader;
 
-struct RasterTableFunctions {
+struct RasterReadFunction {
 public:
 	static void Register(ExtensionLoader &loader);
 };

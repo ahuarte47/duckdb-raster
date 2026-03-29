@@ -1,0 +1,51 @@
+# name: test/sql/rt_spatial.test
+# description: test spatial_raster extension
+# group: [sql]
+
+require raster
+
+statement ok
+INSTALL spatial;
+
+statement ok
+LOAD spatial;
+
+statement ok
+INSTALL json;
+
+statement ok
+LOAD json;
+
+query II
+SELECT
+    id,
+    ST_Area(geometry)
+FROM
+    RT_Read('./test/data/overlay-sample.tiff')
+WHERE
+    ST_Area(geometry) < 500
+;
+----
+22	320
+
+query II
+SELECT
+    id,
+    metadata->>'transform' AS transform
+FROM
+    RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+;
+----
+0	[545539.75,0.5,0.0,4724510.25,0.0,-0.5]
+
+query II
+SELECT
+    id,
+    ST_Area(geometry)
+FROM
+    RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+WHERE
+    ST_Area(geometry) > 500
+;
+----
+0	14400
