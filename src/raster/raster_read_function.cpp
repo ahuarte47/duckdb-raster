@@ -403,12 +403,12 @@ struct RT_Read {
 
 						if (limit.offset_val.Type() == LimitNodeType::CONSTANT_VALUE) {
 							const idx_t offset_value = limit.offset_val.GetConstantValue();
-							RASTER_SCAN_DEBUG_LOG(1, "OFFSET pushdown: %zu", offset_value);
+							RASTER_SCAN_DEBUG_LOG(1, "OFFSET pushdown: %llu", offset_value);
 							bind_data.row_offset = offset_value;
 							limit.offset_val = BoundLimitNode();
 						}
 						const idx_t limit_value = limit.limit_val.GetConstantValue();
-						RASTER_SCAN_DEBUG_LOG(1, "LIMIT pushdown: %zu", limit_value);
+						RASTER_SCAN_DEBUG_LOG(1, "LIMIT pushdown: %llu", limit_value);
 						bind_data.row_count = MinValue<idx_t>(bind_data.row_count, bind_data.row_offset + limit_value);
 						limit.limit_val = BoundLimitNode();
 						return;
@@ -559,8 +559,9 @@ struct RT_Read {
 					data_buffer.GrowCapacity(data_length);
 
 					// Write the header of the data band[s].
-					TileHeader header = {compression, data_type, datacube ? num_bands : 1,
-					                     size_x,      size_y,    nodata_value};
+					TileHeader header = {
+					    compression, static_cast<uint8_t>(data_type), datacube ? num_bands : 1, size_x, size_y,
+					    nodata_value};
 					data_buffer.WriteData(const_data_ptr_t(&header), sizeof(TileHeader));
 
 					// For datacube, return one unique N-dimensional column with all bands interleaved,
