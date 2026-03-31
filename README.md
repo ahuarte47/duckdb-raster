@@ -1,5 +1,7 @@
 # DuckDB Raster Extension
 
+🚧 WORK IN PROGRESS 🚧
+
 ## What is this?
 
 This is an extension for DuckDB for reading and writing raster files data using SQL.
