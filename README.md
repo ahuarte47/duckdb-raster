@@ -165,6 +165,16 @@ This is the list of available functions:
 
 The full list of functions and their documentation is available in the [function reference](docs/functions.md)
 
+## TODO
+
+This is the list of things I have in mind for the future, but if you want to contribute or have any suggestion please let me know!
+
++ Functions to transform the data band BLOBs into ARRAYS or other structures. The idea is to be able to do algebra operations with the data of the tiles directly in SQL.
++ Filter pushdown on tiles is planned, LIMIT/OFFSET pushdown is already supported.
++ `COPY` function to write raster files from the loaded tables.
++ Compression formats for the data band BLOBs (`GZip`, `ZSTD`?).
++ Integration with DuckDB File System.
+
 ## How do I build it?
 
 ### Dependencies
