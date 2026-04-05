@@ -6,6 +6,7 @@
 // DuckDB
 #include "duckdb.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
+#include "duckdb/common/types.hpp"
 #include "duckdb/common/types/value.hpp"
 // GDAL
 #include "gdal_priv.h"
@@ -31,6 +32,9 @@ public:
 	 * all the information needed to read and interpret the tile data.
 	 */
 	static Value TileAsBlob(const TileHeader &header, MemoryStream &data_buffer, const idx_t &data_length);
+
+	//! Convert a BLOB value containing data bands of a raster tile into an ARRAY of values.
+	static Value BlobAsArray(const Value &blob, const LogicalType &array_type, const bool &filter_nodata = false);
 };
 
 } // namespace duckdb

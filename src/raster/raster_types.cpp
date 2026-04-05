@@ -11,6 +11,16 @@ LogicalType RasterTypes::BBOX() {
 	return bbox_type;
 }
 
+LogicalType RasterTypes::ARRAY(const LogicalType &element_type) {
+	auto array_type = LogicalType::STRUCT({{"data_type", LogicalType::INTEGER},
+	                                       {"bands", LogicalType::INTEGER},
+	                                       {"cols", LogicalType::INTEGER},
+	                                       {"rows", LogicalType::INTEGER},
+	                                       {"no_data", LogicalType::DOUBLE},
+	                                       {"values", LogicalType::LIST(element_type)}});
+	return array_type;
+}
+
 void RasterTypes::Register(ExtensionLoader &loader) {
 	// Register types
 	loader.RegisterType("RT_BBOX", RasterTypes::BBOX());

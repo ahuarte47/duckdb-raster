@@ -176,6 +176,7 @@ class ExtensionLoader;
 //! Define new types to register into DuckDB.
 struct RasterTypes {
 	static LogicalType BBOX();
+	static LogicalType ARRAY(const LogicalType &element_type);
 
 	static void Register(ExtensionLoader &loader);
 };

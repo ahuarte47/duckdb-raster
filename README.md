@@ -161,6 +161,68 @@ This is the list of available functions:
 	| Erdas Imagine | .img |
 	| GDAL Virtual | .vrt |
 
++ ### RT_Blob2Array
+
+	Transforms the BLOB data of the data band columns into an array of a numeric data type.
+
+	```sql
+	SELECT
+		RT_Blob2ArrayInt32(databand_1, true) AS r,
+		RT_Blob2ArrayInt32(databand_2, true) AS g,
+		RT_Blob2ArrayInt32(databand_3, true) AS b
+	FROM
+		RT_Read('path/to/raster/file.tif')
+	;
+	```
+
+	Function accepts the following parameters:
+
+	| Parameter | Type | Description |
+	| --------- | -----| ----------- |
+	| `blob` | BLOB | The BLOB column of the data band to transform. |
+	| `filter_nodata` | BOOLEAN | Whether to filter out NoData values from the array. If `true`, the function will exclude NoData values from the resulting array. |
+
+	Extension provides a different function for each numeric data type:
+
+	| Function | Description |
+	| -------- | ----------- |
+	| `RT_Blob2ArrayUInt8` | Transforms a BLOB data column into an array of UINT8 values |
+	| `RT_Blob2ArrayInt8` | Transforms a BLOB data column into an array of INT8 values |
+	| `RT_Blob2ArrayUInt16` | Transforms a BLOB data column into an array of UINT16 values |
+	| `RT_Blob2ArrayInt16` | Transforms a BLOB data column into an array of INT16 values |
+	| `RT_Blob2ArrayUInt32` | Transforms a BLOB data column into an array of UINT32 values |
+	| `RT_Blob2ArrayInt32` | Transforms a BLOB data column into an array of INT32 values |
+	| `RT_Blob2ArrayUInt64` | Transforms a BLOB data column into an array of UINT64 values |
+	| `RT_Blob2ArrayInt64` | Transforms a BLOB data column into an array of INT64 values |
+	| `RT_Blob2ArrayFloat` | Transforms a BLOB data column into an array of FLOAT values |
+	| `RT_Blob2ArrayDouble` | Transforms a BLOB data column into an array of DOUBLE values |
+
+	Functions return a struct with the following fields:
+
+	+ `data_type` (INT): RasterDataType code of the data in the BLOB.
+	+ `bands` (INT): Number of bands or layers in the data buffer.
+	+ `cols` (INT): Number of columns in the tile.
+	+ `rows` (INT): Number of rows in the tile.
+	+ `no_data` (DOUBLE): NoData value for the tile (To consider when applying algebra operations). `-infinity` if not defined.
+	+ `values` (ARRAY): An array with the pixel values of the tile for the corresponding band and data type.
+
+	This allows you to do algebra operations with the data of the tiles directly in SQL:
+
+	```sql
+	WITH __input AS (
+		SELECT
+			RT_Blob2ArrayInt32(databand_1, false) AS r
+		FROM
+			RT_Read('path/to/raster/file.tif', blocksize_x := 512, blocksize_y := 512)
+	)
+	SELECT
+		list_min(r.values) AS r_min,
+		list_stddev_pop(r.values) AS r_avg,
+		list_max(r.values) AS r_max
+	FROM
+		__input
+	;
+	```
 
 ### Supported Functions and Documentation
 
@@ -170,7 +232,6 @@ The full list of functions and their documentation is available in the [function
 
 This is the list of things I have in mind for the future, but if you want to contribute or have any suggestion please let me know!
 
-+ Functions to transform the data band BLOBs into ARRAYS or other structures. The idea is to be able to do algebra operations with the data of the tiles directly in SQL.
 + Filter pushdown on tiles is planned, LIMIT/OFFSET pushdown is already supported.
 + `COPY` function to write raster files from the loaded tables.
 + Compression formats for the data band BLOBs (`GZip`, `ZSTD`?).

@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+0.2.0
+++++++++++++++++++
+
+- New `RT_Blob2Array<TYPE>` functions to transform the data band BLOBs into ARRAYS of the corresponding type.
+
 0.1.0
 ++++++++++++++++++
 

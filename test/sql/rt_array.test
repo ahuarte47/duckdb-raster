@@ -1,0 +1,102 @@
+# name: test/sql/rt_array.test
+# description: test spatial_raster extension
+# group: [sql]
+
+require raster
+
+query IIIIII
+WITH __input AS (
+    SELECT
+        RT_Blob2ArrayInt32(databand_1, false) AS r,
+        RT_Blob2ArrayInt32(databand_2, false) AS g,
+        RT_Blob2ArrayInt32(databand_3, false) AS b
+    FROM
+        RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+)
+SELECT
+    r.cols AS r_cols,
+    r.rows AS r_rows,
+    g.cols AS g_cols,
+    g.rows AS g_rows,
+    b.cols AS b_cols,
+    b.rows AS b_rows,
+FROM
+    __input
+;
+----
+320	180	320	180	320	180
+
+query IIIIIIIII
+WITH __input AS (
+    SELECT
+        RT_Blob2ArrayInt32(databand_1, false) AS r,
+        RT_Blob2ArrayInt32(databand_2, false) AS g,
+        RT_Blob2ArrayInt32(databand_3, false) AS b
+    FROM
+        RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+)
+SELECT
+    length(r.values) AS r_len,
+    list_extract(r.values, 1) AS r_first,
+    list_extract(r.values, length(r.values)) AS r_last,
+    length(g.values) AS g_len,
+    list_extract(g.values, 1) AS g_first,
+    list_extract(g.values, length(g.values)) AS g_last,
+    length(b.values) AS b_len,
+    list_extract(b.values, 1) AS b_first,
+    list_extract(b.values, length(b.values)) AS b_last
+FROM
+    __input
+;
+----
+57600	60	158	57600	44	165	57600	18	149
+
+query IIIIIIIII
+WITH __input AS (
+    SELECT
+        RT_Blob2ArrayInt32(databand_1, false) AS r,
+        RT_Blob2ArrayInt32(databand_2, false) AS g,
+        RT_Blob2ArrayInt32(databand_3, false) AS b
+    FROM
+        RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+)
+SELECT
+    list_min(r.values) AS r_min,
+    list_stddev_pop(r.values) AS r_avg,
+    list_max(r.values) AS r_max,
+    list_min(g.values) AS g_min,
+    list_stddev_pop(g.values) AS g_avg,
+    list_max(g.values) AS g_max,
+    list_min(b.values) AS b_min,
+    list_stddev_pop(b.values) AS b_avg,
+    list_max(b.values) AS b_max
+FROM
+    __input
+;
+----
+0	62.911198	255	0	60.559050	255	0	61.648556	254
+
+query IIIIIIIII
+WITH __input AS (
+    SELECT
+        RT_Blob2ArrayDouble(databand_1, false) AS r,
+        RT_Blob2ArrayUint8(databand_2, false) AS g,
+        RT_Blob2ArrayFloat(databand_3, false) AS b
+    FROM
+        RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+)
+SELECT
+    list_min(r.values) AS r_min,
+    list_stddev_pop(r.values) AS r_avg,
+    list_max(r.values) AS r_max,
+    list_min(g.values) AS g_min,
+    list_stddev_pop(g.values) AS g_avg,
+    list_max(g.values) AS g_max,
+    list_min(b.values) AS b_min,
+    list_stddev_pop(b.values) AS b_avg,
+    list_max(b.values) AS b_max
+FROM
+    __input
+;
+----
+0	62.911198	255	0	60.559050	255	0	61.648556	254
