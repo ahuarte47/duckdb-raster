@@ -122,22 +122,21 @@ This is the list of available functions:
 	+ A Header describes the raster tile data stored in the BLOB.
 		+ `magic` (uint16_t): Magic code to identify a BLOB as a raster block (`0x5253`)
 		+ `compression` (uint8_t): Compression algorithm code used for the tile data. `0=NONE` is the unique option now, but more can be added in the future.
-		+ `data_type` (uint8_t): GDALDataType of the tile data:
+		+ `data_type` (uint8_t): RasterDataType of the tile data:
 
 			| Code | Data Type | Description |
 			|------|-----------|-------------|
-			| 0    | GDT_Unknown | Unknown or unspecified type |
-			| 1    | GDT_Byte | Eight bit unsigned integer |
-			| 14   | GDT_Int8 | 8-bit signed integer |
-			| 2    | GDT_UInt16 | Sixteen bit unsigned integer |
-			| 3    | GDT_Int16 | Sixteen bit signed integer |
-			| 4    | GDT_UInt32 | Thirty two bit unsigned integer |
-			| 5    | GDT_Int32 | Thirty two bit signed integer |
-			| 12   | GDT_UInt64 | 64 bit unsigned integer |
-			| 13   | GDT_Int64 | 64 bit signed integer |
-			| 15   | GDT_Float16 | Sixteen bit floating point |
-			| 6    | GDT_Float32 | Thirty two bit floating point |
-			| 7    | GDT_Float64 | Sixty four bit floating point |
+			| 0    | UNKNOWN | Unknown or unspecified type |
+			| 1    | UINT8 | Eight bit unsigned integer |
+			| 2    | INT8 | 8-bit signed integer |
+			| 3    | UINT16 | Sixteen bit unsigned integer |
+			| 4    | INT16 | Sixteen bit signed integer |
+			| 5    | UINT32 | Thirty two bit unsigned integer |
+			| 6    | INT32 | Thirty two bit signed integer |
+			| 7    | UINT64 | 64 bit unsigned integer |
+			| 8    | INT64 | 64 bit signed integer |
+			| 9    | FLOAT | Thirty two bit floating point |
+			| 10   | DOUBLE | Sixty four bit floating point |
 
 		+ `bands` (int32_t): Number of bands or layers in the data buffer
 		+ `cols` (int32_t): Number of columns in the data buffer
