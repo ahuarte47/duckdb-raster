@@ -1,6 +1,7 @@
 #include "raster_read_function.hpp"
 #include "raster_types.hpp"
 #include "raster_utils.hpp"
+#include "filter_eval.hpp"
 #include "function_builder.hpp"
 #include <sstream>
 
@@ -14,6 +15,10 @@
 #include "duckdb/parser/parsed_data/create_copy_function_info.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/optimizer/optimizer_extension.hpp"
+#include "duckdb/planner/expression.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/planner/expression/bound_columnref_expression.hpp"
+#include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
 #include "duckdb/planner/operator/logical_limit.hpp"
 #include "duckdb/planner/operator/logical_order.hpp"
@@ -92,6 +97,9 @@ struct RT_Read {
 		vector<LogicalType> column_types;
 		idx_t row_offset = 0;
 		idx_t row_count = 0;
+
+		// Pushdown filter expressions.
+		vector<std::unique_ptr<Expression>> filter_expressions;
 
 		~BindData() override {
 			// Ensure the GDAL dataset is properly closed when the bind data is destroyed.
@@ -429,6 +437,55 @@ struct RT_Read {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// Complex Filter Pushdown
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void PushdownComplexFilter(ClientContext &context, LogicalGet &get, FunctionData *bind_data_p,
+	                                  vector<unique_ptr<Expression>> &expressions) {
+		auto &bind_data = bind_data_p->Cast<BindData>();
+
+		// Catch filter expressions for later evaluation during scanning if possible.
+		if (!expressions.empty()) {
+			vector<std::unique_ptr<Expression>> temp_expressions;
+			bool do_pushdown = true;
+
+			for (const auto &expr : expressions) {
+				if (!do_pushdown) {
+					break;
+				}
+				auto expr_copy = expr->Copy();
+
+				// We need to convert the column references in the filter expressions from BoundColumnRefExpression
+				// to BoundReferenceExpression, so that one ExpressionExecutor can execute them during scanning.
+				// Also, we check if the filter expressions reference any BLOB data band columns, we only want
+				// to prefilter tiles on "small" columns without preloading the entire "big" BLOBs.
+				ExpressionIterator::VisitExpressionClassMutable(
+				    expr_copy, ExpressionClass::BOUND_COLUMN_REF, [&do_pushdown](unique_ptr<Expression> &child) {
+					    if (do_pushdown) {
+						    const auto &col_ref = child->Cast<BoundColumnRefExpression>();
+
+						    // If filter expressions reference BLOBs, we totally delegate the filter to DuckDB.
+						    if (col_ref.return_type.id() == LogicalTypeId::BLOB) {
+							    do_pushdown = false;
+							    return;
+						    }
+
+						    const auto &column_alias = col_ref.GetAlias();
+						    const auto &column_index = col_ref.binding.column_index;
+						    const auto &return_type = col_ref.return_type;
+						    child = make_uniq<BoundReferenceExpression>(column_alias, return_type, column_index);
+					    }
+				    });
+
+				temp_expressions.push_back(std::move(expr_copy));
+			}
+			if (do_pushdown) {
+				bind_data.filter_expressions = std::move(temp_expressions);
+			}
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Cardinality
 	//------------------------------------------------------------------------------------------------------------------
 
@@ -449,9 +506,11 @@ struct RT_Read {
 
 	//! Fill the output chunk with data for the specified tile coordinates.
 	static bool FillOutput(const BindData &bind_data, const idx_t &row_id, const idx_t &row_index, const int &level,
-	                       const int &tile_x, const int &tile_y, MemoryStream &data_buffer, DataChunk &output) {
+	                       const int &tile_x, const int &tile_y, const FilterContext &filter_context,
+	                       MemoryStream &data_buffer, DataChunk &output) {
 		GDALDataset *dataset = bind_data.dataset.get();
 
+		const auto &metadata_ds = bind_data.metadata_ds;
 		const auto &geo_transform = bind_data.geo_transform;
 		const int &raster_size_x = dataset->GetRasterXSize();
 		const int &raster_size_y = dataset->GetRasterYSize();
@@ -474,6 +533,27 @@ struct RT_Read {
 		const double x_max = MaxValue<double>(MaxValue<double>(pt0.x, pt1.x), MaxValue<double>(pt2.x, pt3.x));
 		const double y_max = MaxValue<double>(MaxValue<double>(pt0.y, pt1.y), MaxValue<double>(pt2.y, pt3.y));
 
+		const std::string geometry_wkt =
+		    StringUtil::Format("POLYGON ((%f %f, %f %f, %f %f, %f %f, %f %f))", pt0.x, pt0.y, pt1.x, pt1.y, pt2.x,
+		                       pt2.y, pt3.x, pt3.y, pt0.x, pt0.y);
+
+		const RasterRow raster_row {Value::BIGINT(row_id),
+		                            Value::DOUBLE(pt0.x + 0.5 * (pt2.x - pt0.x)),
+		                            Value::DOUBLE(pt0.y + 0.5 * (pt2.y - pt0.y)),
+		                            Value::STRUCT({{"xmin", x_min}, {"ymin", y_min}, {"xmax", x_max}, {"ymax", y_max}}),
+		                            Value(geometry_wkt),
+		                            Value::INTEGER(level),
+		                            Value::INTEGER(tile_x),
+		                            Value::INTEGER(tile_y),
+		                            Value::INTEGER(size_x),
+		                            Value::INTEGER(size_y),
+		                            metadata_ds};
+
+		// The filter expressions were evaluated but raster tile does not match the conditions?
+		if (!FilterEval::Eval(raster_row, filter_context)) {
+			return false;
+		}
+
 		// RASTER_SCAN_DEBUG_LOG(1, " > txy=(%d, %d): t_coords=(%d, %d, %d, %d), bbox=(%f, %f, %f, %f)", tile_x, tile_y,
 		//                       offset_x, ofnfset_y, size_x, size_y, x_min, y_min, x_max, y_max);
 
@@ -483,44 +563,37 @@ struct RT_Read {
 
 			switch (dim_index) {
 			case RASTER_ROWID_COLUMN_INDEX:
-				output.data[col_idx].SetValue(row_index, Value::BIGINT(row_id));
+				output.data[col_idx].SetValue(row_index, raster_row.row_id);
 				break;
 			case RASTER_X_COLUMN_INDEX:
-				output.data[col_idx].SetValue(row_index, Value::DOUBLE(pt0.x + 0.5 * (pt2.x - pt0.x)));
+				output.data[col_idx].SetValue(row_index, raster_row.x);
 				break;
 			case RASTER_Y_COLUMN_INDEX:
-				output.data[col_idx].SetValue(row_index, Value::DOUBLE(pt0.y + 0.5 * (pt2.y - pt0.y)));
+				output.data[col_idx].SetValue(row_index, raster_row.y);
 				break;
-			case RASTER_BBOX_COLUMN_INDEX: {
-				const Value bbox = Value::STRUCT({{"xmin", x_min}, {"ymin", y_min}, {"xmax", x_max}, {"ymax", y_max}});
-				output.data[col_idx].SetValue(row_index, bbox);
+			case RASTER_BBOX_COLUMN_INDEX:
+				output.data[col_idx].SetValue(row_index, raster_row.bbox);
 				break;
-			}
-			case RASTER_GEOMETRY_COLUMN_INDEX: {
-				const std::string geometry_wkt =
-				    StringUtil::Format("POLYGON ((%f %f, %f %f, %f %f, %f %f, %f %f))", pt0.x, pt0.y, pt1.x, pt1.y,
-				                       pt2.x, pt2.y, pt3.x, pt3.y, pt0.x, pt0.y);
-
-				output.data[col_idx].SetValue(row_index, geometry_wkt);
+			case RASTER_GEOMETRY_COLUMN_INDEX:
+				output.data[col_idx].SetValue(row_index, raster_row.geometry);
 				break;
-			}
 			case RASTER_LEVEL_COLUMN_INDEX:
-				output.data[col_idx].SetValue(row_index, Value::INTEGER(level));
+				output.data[col_idx].SetValue(row_index, raster_row.level);
 				break;
 			case RASTER_COL_COLUMN_INDEX:
-				output.data[col_idx].SetValue(row_index, Value::INTEGER(tile_x));
+				output.data[col_idx].SetValue(row_index, raster_row.tile_x);
 				break;
 			case RASTER_ROW_COLUMN_INDEX:
-				output.data[col_idx].SetValue(row_index, Value::INTEGER(tile_y));
+				output.data[col_idx].SetValue(row_index, raster_row.tile_y);
 				break;
 			case RASTER_WIDTH_COLUMN_INDEX:
-				output.data[col_idx].SetValue(row_index, Value::INTEGER(size_x));
+				output.data[col_idx].SetValue(row_index, raster_row.size_x);
 				break;
 			case RASTER_HEIGHT_COLUMN_INDEX:
-				output.data[col_idx].SetValue(row_index, Value::INTEGER(size_y));
+				output.data[col_idx].SetValue(row_index, raster_row.size_y);
 				break;
 			case RASTER_METADATA_COLUMN_INDEX:
-				output.data[col_idx].SetValue(row_index, bind_data.metadata_ds);
+				output.data[col_idx].SetValue(row_index, metadata_ds);
 				break;
 			default: {
 				const int num_bands = dataset->GetRasterCount();
@@ -617,6 +690,11 @@ struct RT_Read {
 
 		// RASTER_SCAN_DEBUG_LOG(1, "Execute: start_row=%ld, vector_size=%ld", start_row, vector_size);
 
+		const auto &filter_expressions = bind_data.filter_expressions;
+		const auto &column_ids = bind_data.column_ids;
+		const auto &column_types = bind_data.column_types;
+		const FilterContext filter_context(context, filter_expressions, column_ids, column_types);
+
 		// Loop over the tiles and fill the output chunk.
 
 		MemoryStream data_buffer(Allocator::Get(context));
@@ -626,7 +704,8 @@ struct RT_Read {
 
 			for (int tile_x = first_tx; tile_x < tiles_x && output_size < vector_size; ++tile_x) {
 				// Process one tile.
-				if (FillOutput(bind_data, row_id, output_size, 0, tile_x, tile_y, data_buffer, output)) {
+				if (FillOutput(bind_data, row_id, output_size, 0, tile_x, tile_y, filter_context, data_buffer,
+				               output)) {
 					output_size++;
 				}
 				gstate.current_rid++;
@@ -732,6 +811,10 @@ struct RT_Read {
 		// Enable projection pushdown - allows DuckDB to tell us which columns are needed
 		// The column_ids will be passed to InitGlobal via TableFunctionInitInput
 		func.projection_pushdown = true;
+
+		// Enable complex filter pushdown - handles expressions like (A AND B) OR (C AND D)
+		// that cannot be represented as simple TableFilter objects
+		func.pushdown_complex_filter = PushdownComplexFilter;
 
 		RegisterFunction<TableFunction>(loader, func, CatalogType::TABLE_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE, tags);
 

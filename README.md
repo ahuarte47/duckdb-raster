@@ -161,6 +161,20 @@ This is the list of available functions:
 	| Erdas Imagine | .img |
 	| GDAL Virtual | .vrt |
 
+	`RT_Read` supports filter pushdown on the non-BLOB columns, which allows you to prefilter the tiles that are loaded based on their metadata or spatial location. For example, you can filter the tiles that intersect with a certain geometry or that have a certain value in the metadata:
+
+	```sql
+	SELECT
+		x, y, bbox, geometry
+	FROM
+		RT_Read('path/to/raster/file.tif')
+	WHERE
+		ST_Intersects(geometry, ST_GeomFromText('POLYGON((...))')::GEOMETRY('EPSG:4326'))
+		AND
+		ST_Area(geometry) > 1000
+	;
+	```
+
 + ### RT_Blob2Array
 
 	Transforms the BLOB data of the data band columns into an array of a numeric data type.
@@ -232,7 +246,6 @@ The full list of functions and their documentation is available in the [function
 
 This is the list of things I have in mind for the future, but if you want to contribute or have any suggestion please let me know!
 
-+ Filter pushdown on tiles is planned, LIMIT/OFFSET pushdown is already supported.
 + `COPY` function to write raster files from the loaded tables.
 + Compression formats for the data band BLOBs (`GZip`, `ZSTD`?).
 + Integration with DuckDB File System.

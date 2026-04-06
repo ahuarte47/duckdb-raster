@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+0.3.0
+++++++++++++++++++
+
+- The function `RT_Read` supports Filter pushdown.
+
 0.2.0
 ++++++++++++++++++
 

@@ -6,4 +6,5 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_drivers_function.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_read_function.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_array_functions.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/filter_eval.cpp
     PARENT_SCOPE)
