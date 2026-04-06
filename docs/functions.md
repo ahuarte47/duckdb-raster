@@ -8,6 +8,12 @@
 | [`RT_Drivers`](#rt_drivers) | Returns the list of supported GDAL RASTER drivers and file formats. |
 | [`RT_Read`](#rt_read) | Reads a raster file and returns a table with the raster data. |
 
+**[Scalar Functions](#scalar-functions)**
+
+| Function | Summary |
+| --- | --- |
+| [`RT_Blob2Array`](#rt_blob2array) | Transforms the BLOB data of the data band columns into an array of a numeric data type. |
+
 ----
 
 ## Table Functions
@@ -115,6 +121,8 @@ The data band columns are a BLOB with the following internal structure:
 By using `RT_Read`, the extension also provides “replacement scans” for common raster file formats, allowing you to query files of these formats as if they were tables directly.
 
 ----
+
+## Scalar Functions
 
 ### RT_Blob2Array
 
