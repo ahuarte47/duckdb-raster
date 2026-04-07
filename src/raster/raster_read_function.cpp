@@ -81,6 +81,7 @@ struct RT_Read {
 		string file_name;
 		named_parameter_map_t parameters;
 		CompressionAlg::Value compression_alg = CompressionAlg::NONE;
+		bool skip_empty_tiles = true;
 		bool datacube = false;
 
 		GDALDatasetUniquePtr dataset;
@@ -122,6 +123,11 @@ struct RT_Read {
 		bool datacube = false;
 		if (params.find("datacube") != params.end()) {
 			datacube = params["datacube"].GetValue<bool>();
+		}
+
+		bool skip_empty_tiles = true;
+		if (params.find("skip_empty_tiles") != params.end()) {
+			skip_empty_tiles = params["skip_empty_tiles"].GetValue<bool>();
 		}
 
 		// Open the dataset.
@@ -340,6 +346,7 @@ struct RT_Read {
 		result->file_name = file_path;
 		result->parameters = params;
 		result->compression_alg = compression_alg;
+		result->skip_empty_tiles = skip_empty_tiles;
 		result->datacube = datacube;
 		result->dataset = std::move(dataset);
 		result->metadata_ds = metadata_ds.str();
@@ -521,6 +528,20 @@ struct RT_Read {
 		const int offset_y = tile_y * block_size_y;
 		const int size_x = MinValue<int>(block_size_x, raster_size_x - offset_x);
 		const int size_y = MinValue<int>(block_size_y, raster_size_y - offset_y);
+
+		// Skip empty/sparse tiles (SPARSE_OK GeoTIFF optimization).
+		// GetDataCoverageStatus() returns GDAL_DATA_COVERAGE_STATUS_EMPTY when the tile
+		// has no physical data in the file. GDAL_DATA_COVERAGE_STATUS_UNIMPLEMENTED means
+		// the driver does not support the check, so we proceed normally in that case.
+		if (bind_data.skip_empty_tiles) {
+			GDALRasterBand *band_1 = dataset->GetRasterBand(1);
+			const int coverage = band_1->GetDataCoverageStatus(offset_x, offset_y, size_x, size_y, 0, nullptr);
+
+			if (!(coverage & GDAL_DATA_COVERAGE_STATUS_UNIMPLEMENTED) && !(coverage & GDAL_DATA_COVERAGE_STATUS_DATA)) {
+				RASTER_SCAN_DEBUG_LOG(2, " > txy=(%d, %d): empty sparse tile, skipped", tile_x, tile_y);
+				return false;
+			}
+		}
 
 		const Point2D pt0 = RasterUtils::RasterCoordToWorldCoord(geo_transform, offset_x, offset_y);
 		const Point2D pt1 = RasterUtils::RasterCoordToWorldCoord(geo_transform, offset_x + size_x, offset_y);
@@ -804,6 +825,7 @@ struct RT_Read {
 		func.named_parameters["compression"] = LogicalType::VARCHAR;
 		func.named_parameters["blocksize_x"] = LogicalType::INTEGER;
 		func.named_parameters["blocksize_y"] = LogicalType::INTEGER;
+		func.named_parameters["skip_empty_tiles"] = LogicalType::BOOLEAN;
 		func.named_parameters["datacube"] = LogicalType::BOOLEAN;
 
 		// Enable projection pushdown - allows DuckDB to tell us which columns are needed

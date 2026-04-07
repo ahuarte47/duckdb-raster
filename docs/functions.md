@@ -77,6 +77,7 @@ The `RT_Read` function accepts parameters, most of them optional:
 | `compression` | VARCHAR | The compression method to use when packing the databand column. `NONE` is the unique option now. |
 | `blocksize_x` | INTEGER | The block size of the tile in the x direction. You can use this parameter to override the original block size of the raster. |
 | `blocksize_y` | INTEGER | The block size of the tile in the y direction. You can use this parameter to override the original block size of the raster. |
+| `skip_empty_tiles` | BOOLEAN | `true` means that empty tiles (tiles with no data) will be skipped (It checks `GDAL_DATA_COVERAGE_STATUS_DATA` flag if supported). `true` is the default. |
 | `datacube` | BOOLEAN | `true` means that extension returns one unique N-dimensional databand column with all bands interleaved, otherwise each band is returned as a separate column. `false` is the default. |
 
 This is the list of columns returned by `RT_Read`:
