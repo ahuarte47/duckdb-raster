@@ -363,9 +363,8 @@ struct RT_Read {
 	//------------------------------------------------------------------------------------------------------------------
 
 	struct State final : GlobalTableFunctionState {
-		idx_t current_rid;
 		idx_t current_row;
-		explicit State() : current_rid(0), current_row(0) {
+		explicit State() : current_row(0) {
 		}
 	};
 
@@ -555,7 +554,7 @@ struct RT_Read {
 		}
 
 		// RASTER_SCAN_DEBUG_LOG(1, " > txy=(%d, %d): t_coords=(%d, %d, %d, %d), bbox=(%f, %f, %f, %f)", tile_x, tile_y,
-		//                       offset_x, ofnfset_y, size_x, size_y, x_min, y_min, x_max, y_max);
+		//                       offset_x, offset_y, size_x, size_y, x_min, y_min, x_max, y_max);
 
 		// Fill the output chunk for the current row.
 		for (idx_t col_idx = 0; col_idx < column_ids.size(); col_idx++) {
@@ -680,7 +679,7 @@ struct RT_Read {
 		// Calculate how many record we can fit in the output, and tile coordinates to read.
 
 		const idx_t vector_size = MinValue<idx_t>(STANDARD_VECTOR_SIZE, bind_data.row_count - start_row);
-		idx_t row_id = bind_data.row_offset + gstate.current_rid;
+		idx_t row_id = bind_data.row_offset + gstate.current_row;
 		idx_t output_size = 0;
 
 		const int &tiles_x = bind_data.tiles_x;
@@ -708,13 +707,12 @@ struct RT_Read {
 				               output)) {
 					output_size++;
 				}
-				gstate.current_rid++;
 				row_id++;
 			}
 		}
 
 		// Update the row index.
-		gstate.current_row += gstate.current_rid;
+		gstate.current_row = (row_id - bind_data.row_offset);
 
 		// Set the cardinality of the output.
 		output.SetCardinality(output_size);
