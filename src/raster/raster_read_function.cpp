@@ -535,10 +535,10 @@ struct RT_Read {
 		// the driver does not support the check, so we proceed normally in that case.
 		if (bind_data.skip_empty_tiles) {
 			GDALRasterBand *band_1 = dataset->GetRasterBand(1);
-			const int coverage = band_1->GetDataCoverageStatus(offset_x, offset_y, size_x, size_y, 0, nullptr);
+			const int cov = band_1->GetDataCoverageStatus(offset_x, offset_y, size_x, size_y, 0, nullptr);
 
-			if (!(coverage & GDAL_DATA_COVERAGE_STATUS_UNIMPLEMENTED) && !(coverage & GDAL_DATA_COVERAGE_STATUS_DATA)) {
-				RASTER_SCAN_DEBUG_LOG(2, " > txy=(%d, %d): empty sparse tile, skipped", tile_x, tile_y);
+			if (!(cov & GDAL_DATA_COVERAGE_STATUS_UNIMPLEMENTED) && !(cov & GDAL_DATA_COVERAGE_STATUS_DATA)) {
+				RASTER_SCAN_DEBUG_LOG(3, " > txy=(%d, %d): empty sparse tile, skipped", tile_x, tile_y);
 				return false;
 			}
 		}
@@ -571,10 +571,11 @@ struct RT_Read {
 
 		// The filter expressions were evaluated but raster tile does not match the conditions?
 		if (!FilterEval::Eval(raster_row, filter_context)) {
+			RASTER_SCAN_DEBUG_LOG(3, " > txy=(%d, %d): tile did not match filter conditions, skipped", tile_x, tile_y);
 			return false;
 		}
 
-		// RASTER_SCAN_DEBUG_LOG(1, " > txy=(%d, %d): t_coords=(%d, %d, %d, %d), bbox=(%f, %f, %f, %f)", tile_x, tile_y,
+		// RASTER_SCAN_DEBUG_LOG(3, " > txy=(%d, %d): t_coords=(%d, %d, %d, %d), bbox=(%f, %f, %f, %f)", tile_x, tile_y,
 		//                       offset_x, offset_y, size_x, size_y, x_min, y_min, x_max, y_max);
 
 		// Fill the output chunk for the current row.
@@ -708,7 +709,7 @@ struct RT_Read {
 		const int start_ty = static_cast<int>(start_row / tiles_x);
 		const int start_tx = static_cast<int>(start_row % tiles_x);
 
-		// RASTER_SCAN_DEBUG_LOG(1, "Execute: start_row=%ld, vector_size=%ld", start_row, vector_size);
+		RASTER_SCAN_DEBUG_LOG(2, "Execute: start_row=%ld, vector_size=%ld", start_row, vector_size);
 
 		const auto &filter_expressions = bind_data.filter_expressions;
 		const auto &column_ids = bind_data.column_ids;
