@@ -120,6 +120,9 @@ The data band columns are a BLOB with the following internal structure:
 
 By using `RT_Read`, the extension also provides “replacement scans” for common raster file formats, allowing you to query files of these formats as if they were tables directly.
 
+`RT_Read` supports filter pushdown on the non-BLOB columns, which allows you to prefilter the tiles that are loaded based on their metadata or spatial location.
+As you have noticed, `bbox` and `geometry` columns are available for spatial filtering, so for example, you can filter the tiles that intersect with a certain geometry.
+
 ----
 
 ## Scalar Functions
@@ -186,7 +189,7 @@ Functions return a struct with the following fields:
 + `no_data` (DOUBLE): NoData value for the tile (To consider when applying algebra operations). `-infinity` if not defined.
 + `values` (ARRAY): An array with the pixel values of the tile for the corresponding band and data type.
 
-This allows you to do algebra operations with the data of the tiles directly in SQL:
+This allows you to do algebraic operations with the data of the tiles directly in SQL:
 
 ```sql
 WITH __input AS (
@@ -203,5 +206,10 @@ FROM
 	__input
 ;
 ```
+
+Choose carefully which `RT_Blob2Array<type>` function you invoke, if the array element type in the output does
+not match the data type in the BLOB data column, the function need to adjust values accordingly, and the
+performance may	be affected. You can check the data type of the bands in the `metadata` column returned
+by `RT_Read`.
 
 ----

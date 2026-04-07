@@ -161,7 +161,8 @@ This is the list of available functions:
 	| Erdas Imagine | .img |
 	| GDAL Virtual | .vrt |
 
-	`RT_Read` supports filter pushdown on the non-BLOB columns, which allows you to prefilter the tiles that are loaded based on their metadata or spatial location. For example, you can filter the tiles that intersect with a certain geometry or that have a certain value in the metadata:
+	`RT_Read` supports filter pushdown on the non-BLOB columns, which allows you to prefilter the tiles that are loaded based on their metadata or spatial location. As you have noticed, `bbox` and `geometry` columns are available for spatial filtering, so for example, you can filter the
+	tiles that intersect with a certain geometry:
 
 	```sql
 	SELECT
@@ -173,6 +174,39 @@ This is the list of available functions:
 		AND
 		ST_Area(geometry) > 1000
 	;
+	```
+
++ ### RT_Write (aka `COPY`)
+
+	_TODO_: Add option to write raster files directly using `COPY`.
+
+	Also, because the `geometry` column is available, you can create a new `geoparquet` file (or any other geospatial
+	format supported by the `spatial` extension) with the tile data and their geometries by just running:
+
+	```sql
+	COPY (
+    	SELECT
+        	* EXCLUDE(databand_1,databand_2,databand_3)
+    	FROM
+        	RT_Read('path/to/raster/file.tif')
+	)
+	TO 'path/to/output/file.parquet' (
+    	FORMAT PARQUET, GEOPARQUET_VERSION 'V1'
+	);
+
+	-- Or using the spatial extension, for example, writing a GeoPackage file:
+
+	LOAD spatial;
+
+	COPY (
+		SELECT
+			* EXCLUDE(databand_1,databand_2,databand_3)
+		FROM
+			RT_Read('path/to/raster/file.tif')
+	)
+	TO 'path/to/output/file.gpkg' (
+		FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326'
+	);
 	```
 
 + ### RT_Blob2Array
@@ -220,7 +254,7 @@ This is the list of available functions:
 	+ `no_data` (DOUBLE): NoData value for the tile (To consider when applying algebra operations). `-infinity` if not defined.
 	+ `values` (ARRAY): An array with the pixel values of the tile for the corresponding band and data type.
 
-	This allows you to do algebra operations with the data of the tiles directly in SQL:
+	This allows you to do algebraic operations with the data of the tiles directly in SQL:
 
 	```sql
 	WITH __input AS (
@@ -237,6 +271,11 @@ This is the list of available functions:
 		__input
 	;
 	```
+
+	Choose carefully which `RT_Blob2Array<type>` function you invoke, if the array element type in the output does
+	not match the data type in the BLOB data column, the function need to adjust values accordingly, and the
+	performance may	be affected. You can check the data type of the bands in the `metadata` column returned
+	by `RT_Read`.
 
 ### Supported Functions and Documentation
 
