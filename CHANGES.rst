@@ -1,6 +1,12 @@
 Release history
 ---------------
 
+0.3.1
+++++++++++++++++++
+
+- Fixed function `RT_Read` when reading big raster files.
+- Added `skip_empty_tiles` parameter to `RT_Read` to skip empty tiles (It checks `GDAL_DATA_COVERAGE_STATUS_DATA` flag if supported).
+
 0.3.0
 ++++++++++++++++++
 
