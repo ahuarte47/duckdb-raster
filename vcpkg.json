@@ -15,7 +15,7 @@
             "name": "gdal",
             "default-features": false,
             "features": [
-                "curl","geos","lzma","openssl","zstd"
+                "curl","geos","hdf5","jpeg","lzma","openjpeg","openssl","png","zstd"
             ]
         }
     ],
