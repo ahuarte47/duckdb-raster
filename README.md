@@ -191,7 +191,8 @@ This is the list of available functions:
     	FROM
         	RT_Read('path/to/raster/file.tif')
 	)
-	TO 'path/to/output/file.parquet' (
+	TO 'path/to/output/file.parquet'
+	WITH (
     	FORMAT PARQUET, GEOPARQUET_VERSION 'V1'
 	);
 
@@ -205,7 +206,8 @@ This is the list of available functions:
 		FROM
 			RT_Read('path/to/raster/file.tif')
 	)
-	TO 'path/to/output/file.gpkg' (
+	TO 'path/to/output/file.gpkg'
+	WITH (
 		FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326'
 	);
 	```
