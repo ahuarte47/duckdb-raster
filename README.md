@@ -8,7 +8,7 @@ This is an extension for DuckDB for reading and writing raster files data using 
 
 ## How do I get it?
 
-### Loading from community (TODO)
+### Loading from community
 
 The DuckDB **Raster Extension** is available as a signed [community extension](https://duckdb.org/community_extensions/list_of_extensions).
 See more details on its [DuckDB CE web page](https://duckdb.org/community_extensions/extensions/raster.html).
