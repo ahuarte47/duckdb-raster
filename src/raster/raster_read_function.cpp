@@ -112,22 +112,22 @@ struct RT_Read {
 
 	static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
 	                                     vector<LogicalType> &return_types, vector<string> &names) {
-		auto file_path = input.inputs[0].GetValue<string>();
-		auto params = input.named_parameters;
+		const auto file_path = input.inputs[0].GetValue<string>();
+		const auto &params = input.named_parameters;
 
 		CompressionAlg::Value compression_alg = CompressionAlg::NONE;
 		if (params.find("compression") != params.end()) {
-			compression_alg = CompressionAlg::FromString(params["compression"].GetValue<string>());
+			compression_alg = CompressionAlg::FromString(params.at("compression").GetValue<string>());
 		}
 
 		bool datacube = false;
 		if (params.find("datacube") != params.end()) {
-			datacube = params["datacube"].GetValue<bool>();
+			datacube = params.at("datacube").GetValue<bool>();
 		}
 
 		bool skip_empty_tiles = true;
 		if (params.find("skip_empty_tiles") != params.end()) {
-			skip_empty_tiles = params["skip_empty_tiles"].GetValue<bool>();
+			skip_empty_tiles = params.at("skip_empty_tiles").GetValue<bool>();
 		}
 
 		// Open the dataset.
@@ -185,10 +185,10 @@ struct RT_Read {
 		band->GetBlockSize(&block_size_x, &block_size_y);
 
 		if (params.find("blocksize_x") != params.end()) {
-			block_size_x = params["blocksize_x"].GetValue<int>();
+			block_size_x = params.at("blocksize_x").GetValue<int>();
 		}
 		if (params.find("blocksize_y") != params.end()) {
-			block_size_y = params["blocksize_y"].GetValue<int>();
+			block_size_y = params.at("blocksize_y").GetValue<int>();
 		}
 		if (block_size_x <= 0 || block_size_y <= 0) {
 			throw InvalidInputException("Invalid block size specified, must be greater than 0");
@@ -503,6 +503,10 @@ struct RT_Read {
 		result->has_max_cardinality = true;
 		result->max_cardinality = bind_data.row_count - bind_data.row_offset;
 
+		// This is an estimate of the number of rows/tiles
+		result->has_estimated_cardinality = true;
+		result->estimated_cardinality = result->max_cardinality;
+
 		return result;
 	}
 
@@ -650,29 +654,29 @@ struct RT_Read {
 					// For datacube, return one unique N-dimensional column with all bands interleaved,
 					// Otherwise each band is returned as a separate column.
 					data_ptr_t data_ptr = data_buffer.GetData() + sizeof(TileHeader);
+					CPLErr read_err = CE_None;
 					if (datacube) {
 						// Read the data of all bands...
-						if (dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_ptr, size_x, size_y,
-						                      data_type, num_bands, nullptr, 0, 0, 0, nullptr) != CE_None) {
-							const std::string error = RasterUtils::GetLastGdalErrorMsg();
-							RASTER_SCAN_DEBUG_LOG(1, "Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
-							output.data[col_idx].SetValue(row_index, Value::BLOB(""));
-							continue;
-						}
+						read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_ptr, size_x,
+						                             size_y, data_type, num_bands, nullptr, 0, 0, 0, nullptr);
+
 					} else {
 						const int band_index = static_cast<int>(dim_index - RASTER_FIRST_BAND_COLUMN_INDEX);
 						GDALRasterBand *band = dataset->GetRasterBand(band_index + 1);
 
 						// Read the data of the band...
-						if (band->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_ptr, size_x, size_y,
-						                   data_type, 0, 0, nullptr) != CE_None) {
-							const std::string error = RasterUtils::GetLastGdalErrorMsg();
-							RASTER_SCAN_DEBUG_LOG(1, "Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
-							output.data[col_idx].SetValue(row_index, Value::BLOB(""));
-							continue;
-						}
+						read_err = band->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_ptr, size_x, size_y,
+						                          data_type, 0, 0, nullptr);
 					}
 					data_buffer.SetPosition(0);
+
+					// Is there an error reading the tile data?
+					if (read_err != CE_None) {
+						const std::string error = RasterUtils::GetLastGdalErrorMsg();
+						RASTER_SCAN_DEBUG_LOG(1, "Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
+						output.data[col_idx].SetValue(row_index, Value::BLOB(""));
+						continue;
+					}
 
 					// Write the tile data as a blob.
 					Value data_value = RasterUtils::TileAsBlob(header, data_buffer, data_length);
@@ -764,6 +768,24 @@ struct RT_Read {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// Progress Scan
+	//------------------------------------------------------------------------------------------------------------------
+
+	static double Progress(ClientContext &context, const FunctionData *bind_data_p,
+	                       const GlobalTableFunctionState *global_state) {
+		auto &bind_data = bind_data_p->Cast<BindData>();
+		auto &gstate = global_state->Cast<State>();
+
+		// The table is empty, no progress to report.
+		if (bind_data.row_count == 0) {
+			return 100;
+		}
+
+		auto p = 100 * (static_cast<double>(gstate.current_row) / static_cast<double>(bind_data.row_count));
+		return p > 100 ? 100 : p;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Documentation
 	//------------------------------------------------------------------------------------------------------------------
 
@@ -818,6 +840,7 @@ struct RT_Read {
 
 		TableFunction func("RT_Read", {LogicalType::VARCHAR}, Execute, Bind, Init);
 		func.cardinality = Cardinality;
+		func.table_scan_progress = Progress;
 
 		// Optional parameters
 		func.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
