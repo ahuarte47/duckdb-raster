@@ -1,6 +1,12 @@
 Release history
 ---------------
 
+0.4.0 (WIP)
+++++++++++++++++++
+
+- Update to GDAL 3.12.3 & support for more raster formats.
+- Fix `RT_Read` function to handle nodata values NaN correctly.
+
 0.3.1
 ++++++++++++++++++
 
