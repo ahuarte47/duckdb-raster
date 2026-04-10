@@ -247,7 +247,7 @@ struct RT_Read {
 			const char *type_name = GDALGetDataTypeName(raster_type);
 			int has_nodata = 0;
 			double nodata = band->GetNoDataValue(&has_nodata);
-			nodata = has_nodata ? nodata : NumericLimits<double>::Minimum();
+			nodata = has_nodata && !std::isnan(nodata) ? nodata : NumericLimits<double>::Minimum();
 
 			RASTER_SCAN_DEBUG_LOG(1, " > Band %d: name='%s', type=%s, nodata=%f", b, band_name.c_str(), type_name,
 			                      nodata);
