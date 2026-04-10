@@ -71,6 +71,7 @@ Value RasterUtils::BlobAsArray(const Value &blob, const LogicalType &array_type,
 
 	const RasterDataType::Value data_type = header.data_type;
 	const double no_data = header.no_data;
+	bool no_data_is_nan = std::isnan(no_data);
 	vector<Value> data_values;
 
 	// TODO:
@@ -87,6 +88,10 @@ Value RasterUtils::BlobAsArray(const Value &blob, const LogicalType &array_type,
 			if (filter_nodata) {
 				for (idx_t i = 0; i < num_values; i++) {
 					const auto raw_value = read_raw();
+
+					if (no_data_is_nan && std::isnan(raw_value)) {
+						continue;
+					}
 					if (static_cast<double>(raw_value) != no_data) {
 						data_values.push_back(make_value(raw_value));
 					}

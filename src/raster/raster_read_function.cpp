@@ -247,7 +247,7 @@ struct RT_Read {
 			const char *type_name = GDALGetDataTypeName(raster_type);
 			int has_nodata = 0;
 			double nodata = band->GetNoDataValue(&has_nodata);
-			nodata = has_nodata && !std::isnan(nodata) ? nodata : NumericLimits<double>::Minimum();
+			nodata = has_nodata ? nodata : NumericLimits<double>::Minimum();
 
 			RASTER_SCAN_DEBUG_LOG(1, " > Band %d: name='%s', type=%s, nodata=%f", b, band_name.c_str(), type_name,
 			                      nodata);
@@ -258,7 +258,7 @@ struct RT_Read {
 				nodata_value = nodata;
 			} else if (raster_type != data_type) {
 				throw IOException("All bands must have the same data type");
-			} else if (nodata != nodata_value) {
+			} else if (!std::isnan(nodata) && !std::isnan(nodata_value) && nodata != nodata_value) {
 				throw IOException("All bands must have the same nodata value");
 			}
 
