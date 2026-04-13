@@ -1,0 +1,59 @@
+# name: test/sql/rt_write.test
+# description: test spatial_raster extension
+# group: [sql]
+
+require raster
+
+query I
+COPY (
+    SELECT * FROM RT_Read('./test/data/overlay-sample.tiff')
+)
+TO '__TEST_DIR__/copytoraster.tiff'
+WITH (
+    FORMAT RASTER,
+    DRIVER 'COG',
+    CREATION_OPTIONS ('COMPRESS=LZW'),
+    RESAMPLING 'nearest',
+    ENVELOPE [545539.750, 4724420.250, 545699.750, 4724510.250],
+    SRS 'EPSG:25830',
+    GEOMETRY_COLUMN 'geometry',
+    DATABAND_COLUMNS ['databand_3', 'databand_2', 'databand_1']
+);
+----
+23
+
+query I
+SELECT
+    COUNT(id)
+FROM
+    RT_Read('__TEST_DIR__/copytoraster.tiff')
+;
+----
+1
+
+query I
+COPY (
+    SELECT * FROM RT_Read('./test/data/overlay-sample.tiff')
+)
+TO '__TEST_DIR__/copytoraster.png'
+WITH (
+    FORMAT RASTER,
+    DRIVER 'PNG',
+    CREATION_OPTIONS ('COMPRESS=LZW'),
+    RESAMPLING 'nearest',
+    ENVELOPE [545539.750, 4724420.250, 545699.750, 4724510.250],
+    SRS 'EPSG:25830',
+    GEOMETRY_COLUMN 'geometry',
+    DATABAND_COLUMNS ['databand_3', 'databand_2', 'databand_1']
+);
+----
+23
+
+query I
+SELECT
+    COUNT(id)
+FROM
+    RT_Read('__TEST_DIR__/copytoraster.png')
+;
+----
+1

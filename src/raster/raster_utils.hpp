@@ -35,6 +35,9 @@ public:
 
 	//! Convert a BLOB value containing data bands of a raster tile into an ARRAY of values.
 	static Value BlobAsArray(const Value &blob, const LogicalType &array_type, const bool &filter_nodata = false);
+
+	//! Convert a BLOB value containing data bands of a raster tile into a stream of bytes.
+	static bool BlobAsStream(const Value &blob, TileHeader &data_header, MemoryStream &data_buffer);
 };
 
 } // namespace duckdb

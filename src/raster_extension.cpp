@@ -12,6 +12,7 @@
 #include "raster/raster_drivers_function.hpp"
 #include "raster/raster_read_function.hpp"
 #include "raster/raster_array_functions.hpp"
+#include "raster/raster_write_function.hpp"
 
 namespace duckdb {
 
@@ -23,6 +24,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 	RasterDriversFunction::Register(loader);
 	RasterReadFunction::Register(loader);
 	RasterArrayFunctions::Register(loader);
+	RasterWriteFunction::Register(loader);
 }
 
 void RasterExtension::Load(ExtensionLoader &loader) {

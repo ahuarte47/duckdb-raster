@@ -1,9 +1,10 @@
 Release history
 ---------------
 
-0.4.0 (WIP)
+0.4.0
 ++++++++++++++++++
 
+- Add support for writing raster files using the `COPY` command in DuckDB.
 - Update to GDAL 3.12.3 & support for more raster formats.
 - Fix `RT_Read` function to handle nodata values NaN correctly.
 

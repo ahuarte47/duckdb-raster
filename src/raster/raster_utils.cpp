@@ -152,4 +152,45 @@ Value RasterUtils::BlobAsArray(const Value &blob, const LogicalType &array_type,
 	return data;
 }
 
+bool RasterUtils::BlobAsStream(const Value &blob, TileHeader &data_header, MemoryStream &data_buffer) {
+	// Validate the input BLOB value.
+	if (blob.IsNull()) {
+		throw std::runtime_error("Cannot convert NULL blob to array");
+	}
+	if (blob.type().id() != LogicalTypeId::BLOB) {
+		throw std::runtime_error("Expected a BLOB value, but got " + blob.type().ToString());
+	}
+
+	// Validate if the BLOB contains the expected metadata and data structure.
+	const auto &blob_str = StringValue::Get(blob);
+	const auto blob_data = reinterpret_cast<data_ptr_t>(const_cast<char *>(blob_str.data()));
+	const auto blob_size = blob_str.size();
+	if (blob_size < sizeof(TileHeader)) {
+		throw std::runtime_error("BLOB size is too small to contain a valid TileHeader");
+	}
+
+	MemoryStream blob_stream(blob_data, blob_size);
+	TileHeader header = blob_stream.Read<TileHeader>();
+	if (header.magic != RASTER_BLOCK_HEADER_MAGIC) {
+		throw std::runtime_error("BLOB does not contain a valid TileHeader (invalid magic code)");
+	}
+
+	// Get the tile data.
+
+	memcpy(&data_header, &header, sizeof(TileHeader));
+	idx_t num_values = static_cast<idx_t>(header.bands) * header.cols * header.rows;
+
+	// TODO:
+	// Handle compressed tiles when we add support for compression algorithms,
+	// currently we only support uncompressed tiles.
+	//
+
+	if (num_values > 0) {
+		const idx_t data_size = blob_size - sizeof(TileHeader);
+		data_buffer.WriteData(blob_data + sizeof(TileHeader), data_size);
+		return true;
+	}
+	return false;
+}
+
 } // namespace duckdb

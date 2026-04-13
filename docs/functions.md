@@ -7,6 +7,7 @@
 | --- | --- |
 | [`RT_Drivers`](#rt_drivers) | Returns the list of supported GDAL RASTER drivers and file formats. |
 | [`RT_Read`](#rt_read) | Reads a raster file and returns a table with the raster data. |
+| [`COPY TO`](#rt_write) | Exports the data table to a new raster file. |
 
 **[Scalar Functions](#scalar-functions)**
 
@@ -123,6 +124,101 @@ By using `RT_Read`, the extension also provides “replacement scans” for comm
 
 `RT_Read` supports filter pushdown on the non-BLOB columns, which allows you to prefilter the tiles that are loaded based on their metadata or spatial location.
 As you have noticed, `bbox` and `geometry` columns are available for spatial filtering, so for example, you can filter the tiles that intersect with a certain geometry.
+
+----
+
+### RT_Write
+
+Aka `COPY TO` with `FORMAT RASTER`
+
+#### Signature
+
+```sql
+COPY (
+	SELECT ...
+)
+TO 'path/to/output/file.tif'
+WITH (
+	FORMAT RASTER,
+	...
+);
+```
+
+#### Description
+
+You can write raster files using the `COPY` command in DuckDB.
+
+The extension fetches the geometry and data band columns of the input table and creates a raster file with the desired properties. The `geometry` column is used to calculate the spatial extent and the resolution of the output raster,
+and the data band columns are used to populate the pixel values of the output raster.
+
+The extension provides the format `RASTER` and a set of options to control the writing process:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `FORMAT` | VARCHAR | Must be set to 'RASTER' to use the raster writing functionality. |
+| `DRIVER` | VARCHAR | The GDAL driver to use to write the raster file. You can check available drivers using `RT_Drivers` function. |
+| `CREATION_OPTIONS` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the creation of the file. Read GDAL documentation for available options. |
+| `RESAMPLING` | VARCHAR | The resampling method to use when the tile size of the input data does not match the block size of the output raster. Available options are `nearest`, `bilinear`, `cubic`, `cubicspline`, `lanczos`, `average`, `mode`, and `max`. `nearest` is the default. |
+| `ENVELOPE` | DOUBLE[] | The spatial extent of the output raster in the format [xmin, ymin, xmax, ymax]. If not provided, the extent will be calculated from the input tiles. |
+| `SRS` | VARCHAR | The spatial reference system of the output raster in WKT or EPSG code format. |
+| `GEOMETRY_COLUMN` | VARCHAR | The name of the column that contains the geometry of the tiles. This column will be used to calculate the spatial extent and resolution of the output raster. It must be a column of type `GEOMETRY`. `geometry` is the default. |
+| `DATABAND_COLUMNS` | VARCHAR[] | A list of columns that contain the data bands of the raster. These columns must be of type BLOB and have the same internal structure as the data band columns returned by `RT_Read`. |
+
+Raster rotation is not supported, so the input `geometry` column must contain axis-aligned polygons that represent the footprint of each tile.
+
+For example, you can write a new raster file from an existing one by running:
+
+```sql
+COPY (
+   	SELECT
+		geometry,
+		databand_1, databand_2, databand_3
+	FROM
+		RT_Read('./test/data/overlay-sample.tiff')
+)
+TO './test/data/copytoraster.tiff'
+WITH (
+	FORMAT RASTER,
+	DRIVER 'COG',
+	CREATION_OPTIONS ('COMPRESS=LZW'),
+	RESAMPLING 'nearest',
+	ENVELOPE [545539.750, 4724420.250, 545699.750, 4724510.250],
+	SRS 'EPSG:25830',
+	GEOMETRY_COLUMN 'geometry',
+	DATABAND_COLUMNS ['databand_3', 'databand_2', 'databand_1']
+);
+```
+
+Also, because the `geometry` column is available, you can create a new `geoparquet` file (or any other geospatial
+format supported by the `spatial` extension) with the tile data and their geometries by just running:
+
+```sql
+COPY (
+   	SELECT
+		* EXCLUDE(databand_1,databand_2,databand_3)
+   	FROM
+		RT_Read('path/to/raster/file.tif')
+)
+TO 'path/to/output/file.parquet'
+WITH (
+	FORMAT PARQUET, GEOPARQUET_VERSION 'V1'
+);
+
+-- Or using the spatial extension, for example, writing a GeoPackage file:
+
+LOAD spatial;
+
+COPY (
+	SELECT
+		* EXCLUDE(databand_1,databand_2,databand_3)
+	FROM
+		RT_Read('path/to/raster/file.tif')
+)
+TO 'path/to/output/file.gpkg'
+WITH (
+	FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326'
+);
+```
 
 ----
 
