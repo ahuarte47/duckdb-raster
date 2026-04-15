@@ -321,6 +321,39 @@ This is the list of available functions:
 	performance may	be affected. You can check the data type of the bands in the `metadata` column returned
 	by `RT_Read`.
 
++ ### RT_Array2Blob
+
+	Transforms an array of numeric values into a BLOB data column.
+
+	```sql
+	WITH __input AS (
+		SELECT
+			RT_Blob2ArrayInt32(databand_1, false) AS r
+		FROM
+			RT_Read('path/to/raster/file.tif', blocksize_x := 512, blocksize_y := 512)
+	)
+	SELECT
+		RT_Array2Blob(r.values, 'none', r.bands, r.cols, r.rows, r.no_data) AS r_array
+	FROM
+		__input
+	;
+	```
+
+	Function accepts the following parameters:
+
+	| Parameter | Type | Description |
+	| --------- | -----| ----------- |
+	| `array` | ARRAY | The array of numeric values to transform into a BLOB column. |
+	| `compression` | VARCHAR | The compression method to use when packing the data into the BLOB. `NONE` is the unique option now. |
+	| `bands` | INT | Number of bands or layers in the data buffer. |
+	| `cols` | INT | Number of columns in the tile. |
+	| `rows` | INT | Number of rows in the tile. |
+	| `no_data` | DOUBLE | NoData value for the tile (To consider when applying algebra operations). |
+
+	This function allows you to transform the results of algebraic operations on the tile data back into a BLOB column with the
+	internal structure required by `COPY` with `FORMAT RASTER`, so you can write the results of your operations into a new raster file.
+
+
 ### Supported Functions and Documentation
 
 The full list of functions and their documentation is available in the [function reference](docs/functions.md)
@@ -329,7 +362,6 @@ The full list of functions and their documentation is available in the [function
 
 This is the list of things I have in mind for the future, but if you want to contribute or have any suggestion please let me know!
 
-+ Add functions to convert from arrays of numeric values to BLOB databand columns.
 + Add basic math operations for the BLOB databand columns, like `+`, `-`, `*`, `/`.
 + Compression formats for the BLOB databand columns (`GZip`, `ZSTD`?).
 + Integration with DuckDB File System.

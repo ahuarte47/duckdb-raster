@@ -296,7 +296,7 @@ struct RT_Write {
 				const auto &band_value = input.data[band_idx].GetValue(row_idx);
 				TileHeader tile_header;
 
-				if (RasterUtils::BlobAsStream(band_value, tile_header, data_buffer)) {
+				if (RasterUtils::BlobAsStream(band_value, tile_header, data_buffer) > 0) {
 					// Process the data band
 					GDALDataType data_type_i = RasterDataType::ToGDALDataType(tile_header.data_type);
 					int x_size_i = tile_header.cols;

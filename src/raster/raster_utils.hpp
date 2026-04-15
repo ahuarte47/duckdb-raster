@@ -37,7 +37,10 @@ public:
 	static Value BlobAsArray(const Value &blob, const LogicalType &array_type, const bool &filter_nodata = false);
 
 	//! Convert a BLOB value containing data bands of a raster tile into a stream of bytes.
-	static bool BlobAsStream(const Value &blob, TileHeader &data_header, MemoryStream &data_buffer);
+	static std::size_t BlobAsStream(const Value &blob, TileHeader &data_header, MemoryStream &data_buffer);
+
+	//! Convert an ARRAY of values into a stream of bytes containing data bands of a raster tile.
+	static std::size_t ArrayAsStream(const Value &in_array, const TileHeader &in_header, MemoryStream &data_buffer);
 };
 
 } // namespace duckdb

@@ -13,7 +13,8 @@
 
 | Function | Summary |
 | --- | --- |
-| [`RT_Blob2Array`](#rt_blob2array) | Transforms the BLOB data of the data band columns into an array of a numeric data type. |
+| [`RT_Blob2Array`](#rt_blob2array) | Transforms the BLOB data of the databand columns into an array of a numeric data type. |
+| [`RT_Array2Blob`](#rt_array2blob) | Transforms an array of numeric values into a BLOB databand column. |
 
 ----
 
@@ -308,5 +309,47 @@ Choose carefully which `RT_Blob2Array<type>` function you invoke, if the array e
 not match the data type in the BLOB data column, the function need to adjust values accordingly, and the
 performance may	be affected. You can check the data type of the bands in the `metadata` column returned
 by `RT_Read`.
+
+----
+
+### RT_Array2Blob
+
+#### Signature
+
+```sql
+RT_Array2Blob (array ARRAY, compression VARCHAR, bands INT, cols INT, rows INT, no_data DOUBLE)
+```
+
+#### Description
+
+Transforms an array of numeric values into a BLOB databand column.
+
+```sql
+WITH __input AS (
+	SELECT
+		RT_Blob2ArrayInt32(databand_1, false) AS r
+	FROM
+		RT_Read('path/to/raster/file.tif', blocksize_x := 512, blocksize_y := 512)
+)
+SELECT
+	RT_Array2Blob(r.values, 'none', r.bands, r.cols, r.rows, r.no_data) AS r_array
+FROM
+	__input
+;
+```
+
+Function accepts the following parameters:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `array` | ARRAY | The array of numeric values to transform into a BLOB column. |
+| `compression` | VARCHAR | The compression method to use when packing the data into the BLOB. `NONE` is the unique option now. |
+| `bands` | INT | Number of bands or layers in the data buffer. |
+| `cols` | INT | Number of columns in the tile. |
+| `rows` | INT | Number of rows in the tile. |
+| `no_data` | DOUBLE | NoData value for the tile (To consider when applying algebra operations). |
+
+This function allows you to transform the results of algebraic operations on the tile data back into a BLOB column with the
+internal structure required by `COPY` with `FORMAT RASTER`, so you can write the results of your operations into a new raster file.
 
 ----

@@ -6,6 +6,7 @@
 
 // DuckDB
 #include "duckdb/common/limits.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types.hpp"
 // GDAL
 #include "gdal_priv.h"
@@ -61,8 +62,66 @@ struct RasterDataType {
 		DOUBLE = 10
 	};
 
+	//! Convert a RasterDataType::Value to a string.
+	static std::string ToString(const RasterDataType::Value &data_type) {
+		switch (data_type) {
+		case UNKNOWN:
+			return "unknown";
+		case UINT8:
+			return "uint8";
+		case INT8:
+			return "int8";
+		case UINT16:
+			return "uint16";
+		case INT16:
+			return "int16";
+		case UINT32:
+			return "uint32";
+		case INT32:
+			return "int32";
+		case UINT64:
+			return "uint64";
+		case INT64:
+			return "int64";
+		case FLOAT:
+			return "float";
+		case DOUBLE:
+			return "double";
+		default:
+			throw std::runtime_error("Unknown RasterDataType: '" + std::to_string(static_cast<int>(data_type)) + "'");
+		}
+	}
+
 	//! Convert a GDALDataType to the corresponding RasterDataType::Value.
-	static RasterDataType::Value FromGDALDataType(GDALDataType data_type) {
+	static RasterDataType::Value FromLogicalType(const LogicalType &logical_type) {
+		switch (logical_type.id()) {
+		case LogicalTypeId::UTINYINT:
+			return UINT8;
+		case LogicalTypeId::TINYINT:
+			return INT8;
+		case LogicalTypeId::USMALLINT:
+			return UINT16;
+		case LogicalTypeId::SMALLINT:
+			return INT16;
+		case LogicalTypeId::UINTEGER:
+			return UINT32;
+		case LogicalTypeId::INTEGER:
+			return INT32;
+		case LogicalTypeId::UBIGINT:
+			return UINT64;
+		case LogicalTypeId::BIGINT:
+			return INT64;
+		case LogicalTypeId::FLOAT:
+			return FLOAT;
+		case LogicalTypeId::DOUBLE:
+			return DOUBLE;
+		default:
+			throw std::runtime_error("Unsupported logical type for raster data: " + logical_type.ToString());
+		}
+	}
+
+	//! Convert a GDALDataType to the corresponding RasterDataType::Value.
+	static RasterDataType::Value FromGDALDataType(const GDALDataType &data_type) {
 		switch (data_type) {
 		case GDT_Unknown:
 			return UNKNOWN;
@@ -95,7 +154,7 @@ struct RasterDataType {
 	}
 
 	//! Convert a RasterDataType::Value to the corresponding GDALDataType.
-	static GDALDataType ToGDALDataType(RasterDataType::Value data_type) {
+	static GDALDataType ToGDALDataType(const RasterDataType::Value &data_type) {
 		switch (data_type) {
 		case UNKNOWN:
 			return GDT_Unknown;
@@ -120,7 +179,7 @@ struct RasterDataType {
 		case DOUBLE:
 			return GDT_Float64;
 		default:
-			throw std::runtime_error("Unknown RasterDataType: " + std::to_string(static_cast<int>(data_type)));
+			throw std::runtime_error("Unknown RasterDataType: '" + RasterDataType::ToString(data_type) + "'");
 		}
 	}
 };
@@ -133,19 +192,23 @@ struct CompressionAlg {
 
 	//! Convert a string to a CompressionAlg::Value.
 	static CompressionAlg::Value FromString(const std::string &compression_alg) {
-		if (compression_alg == "none") {
+		std::string comp = StringUtil::Lower(compression_alg);
+
+		if (comp == "none") {
 			return NONE;
 		} else {
-			throw std::runtime_error("Unknown CompressionAlgorithm: " + compression_alg);
+			throw std::runtime_error("Unknown CompressionAlgorithm: '" + compression_alg + "'");
 		}
 	}
+
 	//! Convert a CompressionAlg::Value to a string.
-	static std::string ToString(Value compression_alg) {
+	static std::string ToString(const CompressionAlg::Value &compression_alg) {
 		switch (compression_alg) {
 		case NONE:
 			return "none";
 		default:
-			throw std::runtime_error("Unknown CompressionAlgorithm: " + std::to_string(compression_alg));
+			throw std::runtime_error("Unknown CompressionAlgorithm: '" +
+			                         std::to_string(static_cast<int>(compression_alg)) + "'");
 		}
 	}
 };

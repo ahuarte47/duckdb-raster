@@ -100,3 +100,32 @@ FROM
 ;
 ----
 0	62.911198	255	0	60.559050	255	0	61.648556	254
+
+query III
+WITH __input AS (
+    SELECT
+        RT_Blob2ArrayInt32(databand_1, false) AS r
+    FROM
+        RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+),
+__array AS (
+    SELECT
+        RT_Array2Blob(r.values, 'none', r.bands, r.cols, r.rows, r.no_data) AS r_array
+    FROM
+        __input
+),
+__blob AS (
+    SELECT
+        RT_Blob2ArrayFloat(r_array, false) AS r
+    FROM
+        __array
+)
+SELECT
+    list_min(r.values) AS r_min,
+    list_stddev_pop(r.values) AS r_avg,
+    list_max(r.values) AS r_max
+FROM
+    __blob
+;
+----
+0	62.911198	255

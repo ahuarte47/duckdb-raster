@@ -136,7 +136,7 @@ Value RasterUtils::BlobAsArray(const Value &blob, const LogicalType &array_type,
 			read_values([&] { return data_stream.Read<double>(); }, [](auto v) { return Value::DOUBLE(v); });
 			break;
 		default:
-			throw std::runtime_error("Unsupported RasterDataType: " + std::to_string(static_cast<int>(data_type)));
+			throw std::runtime_error("Unsupported RasterDataType: '" + RasterDataType::ToString(data_type) + "'");
 		}
 	}
 
@@ -147,12 +147,12 @@ Value RasterUtils::BlobAsArray(const Value &blob, const LogicalType &array_type,
 	    {"cols", Value::INTEGER(header.cols)},
 	    {"rows", Value::INTEGER(header.rows)},
 	    {"no_data", Value::DOUBLE(header.no_data)},
-	    {"values", Value::LIST(array_type, data_values)},
+	    {"values", Value::LIST(array_type, std::move(data_values))},
 	});
 	return data;
 }
 
-bool RasterUtils::BlobAsStream(const Value &blob, TileHeader &data_header, MemoryStream &data_buffer) {
+std::size_t RasterUtils::BlobAsStream(const Value &blob, TileHeader &data_header, MemoryStream &data_buffer) {
 	// Validate the input BLOB value.
 	if (blob.IsNull()) {
 		throw std::runtime_error("Cannot convert NULL blob to array");
@@ -177,20 +177,102 @@ bool RasterUtils::BlobAsStream(const Value &blob, TileHeader &data_header, Memor
 
 	// Get the tile data.
 
-	memcpy(&data_header, &header, sizeof(TileHeader));
-	idx_t num_values = static_cast<idx_t>(header.bands) * header.cols * header.rows;
+	data_header = header;
 
 	// TODO:
 	// Handle compressed tiles when we add support for compression algorithms,
 	// currently we only support uncompressed tiles.
 	//
 
+	const idx_t num_values = static_cast<idx_t>(header.bands) * header.cols * header.rows;
 	if (num_values > 0) {
 		const idx_t data_size = blob_size - sizeof(TileHeader);
 		data_buffer.WriteData(blob_data + sizeof(TileHeader), data_size);
-		return true;
+		return data_size;
 	}
-	return false;
+	return 0;
+}
+
+std::size_t RasterUtils::ArrayAsStream(const Value &in_array, const TileHeader &in_header, MemoryStream &data_buffer) {
+	// Validate the input ARRAY value.
+	if (in_array.IsNull()) {
+		throw std::runtime_error("Cannot convert NULL array to stream");
+	}
+	if (in_array.type().id() != LogicalTypeId::LIST) {
+		throw std::runtime_error("Expected a LIST value, but got " + in_array.type().ToString());
+	}
+
+	// TODO:
+	// Handle compressed tiles when we add support for compression algorithms,
+	// currently we only support uncompressed tiles.
+	//
+
+	idx_t start_position = data_buffer.GetPosition();
+	const auto &children = ListValue::GetChildren(in_array);
+
+	const std::size_t num_values = static_cast<size_t>(in_header.bands) * in_header.cols * in_header.rows;
+	if (children.size() != num_values) {
+		throw std::runtime_error("The number of values in the input array does not match the expected number of values "
+		                         "based on the tile dimensions and bands");
+	}
+
+	// Write the tile header to the stream.
+
+	data_buffer.Write<TileHeader>(in_header);
+
+	// Write the tile data to the stream.
+
+	if (children.empty()) {
+		return data_buffer.GetPosition() - start_position;
+	}
+
+	auto write_values = [&](auto make_value) {
+		using T = decltype(make_value(children[0]));
+
+		vector<T> raw;
+		raw.reserve(children.size());
+
+		for (const auto &value : children) {
+			raw.push_back(make_value(value));
+		}
+		data_buffer.WriteData(const_data_ptr_cast(raw.data()), raw.size() * sizeof(T));
+	};
+
+	switch (in_header.data_type) {
+	case RasterDataType::UINT8:
+		write_values([](const Value &v) { return v.GetValue<uint8_t>(); });
+		break;
+	case RasterDataType::INT8:
+		write_values([](const Value &v) { return v.GetValue<int8_t>(); });
+		break;
+	case RasterDataType::UINT16:
+		write_values([](const Value &v) { return v.GetValue<uint16_t>(); });
+		break;
+	case RasterDataType::INT16:
+		write_values([](const Value &v) { return v.GetValue<int16_t>(); });
+		break;
+	case RasterDataType::UINT32:
+		write_values([](const Value &v) { return v.GetValue<uint32_t>(); });
+		break;
+	case RasterDataType::INT32:
+		write_values([](const Value &v) { return v.GetValue<int32_t>(); });
+		break;
+	case RasterDataType::UINT64:
+		write_values([](const Value &v) { return v.GetValue<uint64_t>(); });
+		break;
+	case RasterDataType::INT64:
+		write_values([](const Value &v) { return v.GetValue<int64_t>(); });
+		break;
+	case RasterDataType::FLOAT:
+		write_values([](const Value &v) { return v.GetValue<float>(); });
+		break;
+	case RasterDataType::DOUBLE:
+		write_values([](const Value &v) { return v.GetValue<double>(); });
+		break;
+	default:
+		throw std::runtime_error("Unsupported RasterDataType: '" + RasterDataType::ToString(in_header.data_type) + "'");
+	}
+	return data_buffer.GetPosition() - start_position;
 }
 
 } // namespace duckdb
