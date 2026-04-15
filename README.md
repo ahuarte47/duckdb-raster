@@ -330,7 +330,8 @@ The full list of functions and their documentation is available in the [function
 This is the list of things I have in mind for the future, but if you want to contribute or have any suggestion please let me know!
 
 + Add functions to convert from arrays of numeric values to BLOB databand columns.
-+ Compression formats for the data band BLOBs (`GZip`, `ZSTD`?).
++ Add basic math operations for the BLOB databand columns, like `+`, `-`, `*`, `/`.
++ Compression formats for the BLOB databand columns (`GZip`, `ZSTD`?).
 + Integration with DuckDB File System.
 
 ## How do I build it?
