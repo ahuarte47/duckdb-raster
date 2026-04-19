@@ -1,6 +1,7 @@
 set(EXTENSION_SOURCES
     ${EXTENSION_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/gdal_module.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raster_casts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_types.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_drivers_function.cpp
@@ -8,4 +9,6 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_array_functions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_write_function.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/filter_eval.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/data_cube.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/data_types.cpp
     PARENT_SCOPE)

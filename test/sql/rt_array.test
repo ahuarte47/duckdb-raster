@@ -7,9 +7,9 @@ require raster
 query IIIIII
 WITH __input AS (
     SELECT
-        RT_Blob2ArrayInt32(databand_1, false) AS r,
-        RT_Blob2ArrayInt32(databand_2, false) AS g,
-        RT_Blob2ArrayInt32(databand_3, false) AS b
+        RT_Cube2ArrayInt32(databand_1, false) AS r,
+        RT_Cube2ArrayInt32(databand_2, false) AS g,
+        RT_Cube2ArrayInt32(databand_3, false) AS b
     FROM
         RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
 )
@@ -29,9 +29,9 @@ FROM
 query IIIIIIIII
 WITH __input AS (
     SELECT
-        RT_Blob2ArrayInt32(databand_1, false) AS r,
-        RT_Blob2ArrayInt32(databand_2, false) AS g,
-        RT_Blob2ArrayInt32(databand_3, false) AS b
+        RT_Cube2ArrayInt32(databand_1, false) AS r,
+        RT_Cube2ArrayInt32(databand_2, false) AS g,
+        RT_Cube2ArrayInt32(databand_3, false) AS b
     FROM
         RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
 )
@@ -54,9 +54,9 @@ FROM
 query IIIIIIIII
 WITH __input AS (
     SELECT
-        RT_Blob2ArrayInt32(databand_1, false) AS r,
-        RT_Blob2ArrayInt32(databand_2, false) AS g,
-        RT_Blob2ArrayInt32(databand_3, false) AS b
+        RT_Cube2ArrayInt32(databand_1, false) AS r,
+        RT_Cube2ArrayInt32(databand_2, false) AS g,
+        RT_Cube2ArrayInt32(databand_3, false) AS b
     FROM
         RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
 )
@@ -79,9 +79,9 @@ FROM
 query IIIIIIIII
 WITH __input AS (
     SELECT
-        RT_Blob2ArrayDouble(databand_1, false) AS r,
-        RT_Blob2ArrayUint8(databand_2, false) AS g,
-        RT_Blob2ArrayFloat(databand_3, false) AS b
+        RT_Cube2ArrayDouble(databand_1, false) AS r,
+        RT_Cube2ArrayUint8(databand_2, false) AS g,
+        RT_Cube2ArrayFloat(databand_3, false) AS b
     FROM
         RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
 )
@@ -104,19 +104,19 @@ FROM
 query III
 WITH __input AS (
     SELECT
-        RT_Blob2ArrayInt32(databand_1, false) AS r
+        RT_Cube2ArrayInt32(databand_1, false) AS r
     FROM
         RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
 ),
 __array AS (
     SELECT
-        RT_Array2Blob(r.values, 'none', r.bands, r.cols, r.rows, r.no_data) AS r_array
+        RT_Array2Cube(r.values, 'RAW', r.bands, r.cols, r.rows, r.no_data) AS r_array
     FROM
         __input
 ),
 __blob AS (
     SELECT
-        RT_Blob2ArrayFloat(r_array, false) AS r
+        RT_Cube2ArrayFloat(r_array, false) AS r
     FROM
         __array
 )

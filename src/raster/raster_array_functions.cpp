@@ -1,5 +1,6 @@
 #include "raster_array_functions.hpp"
 #include "raster_utils.hpp"
+#include "data_cube.hpp"
 #include "function_builder.hpp"
 
 // DuckDB
@@ -12,22 +13,24 @@ namespace duckdb {
 namespace {
 
 //======================================================================================================================
-// RT_Blob2Array
+// RT_Cube2Array
 //======================================================================================================================
 
-struct RT_Blob2Array {
+struct RT_Cube2Array {
 	//! Transform a BLOB data band into an ARRAY of values.
-	static void Blob2Array(DataChunk &args, ExpressionState &state, Vector &result, const LogicalType &type) {
+	static void Cube2Array(DataChunk &args, ExpressionState &state, Vector &result, const LogicalType &type) {
 		D_ASSERT(args.data.size() == 2);
-
 		const idx_t count = args.size();
+
+		DataCube data_cube(Allocator::Get(state.GetContext()));
 
 		// We loop over the rows by hand because BinaryExecutor only supports C++ primitives.
 		for (idx_t i = 0; i < count; i++) {
 			Value blob = args.data[0].GetValue(i);
 			bool filter_nodata = args.data[1].GetValue(i).GetValue<bool>();
 
-			result.SetValue(i, RasterUtils::BlobAsArray(blob, type, filter_nodata));
+			data_cube.LoadBlob(blob);
+			result.SetValue(i, data_cube.ToArray(type, filter_nodata));
 		}
 	}
 
@@ -47,8 +50,8 @@ struct RT_Blob2Array {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		SELECT RT_Blob2ArrayUInt32(databand_1, false) AS data_array1;
-		SELECT RT_Blob2ArrayInt32(databand_1, false) AS data_array2;
+		SELECT RT_Cube2ArrayUInt32(databand_1, false) AS data_array1;
+		SELECT RT_Cube2ArrayInt32(databand_1, false) AS data_array2;
 	)";
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -61,16 +64,16 @@ struct RT_Blob2Array {
 		tags.insert("category", "scalar");
 
 		static constexpr std::array<std::pair<const char *, LogicalTypeId>, 10> type_variants = {{
-		    {"RT_Blob2ArrayUInt8", LogicalTypeId::UTINYINT},
-		    {"RT_Blob2ArrayInt8", LogicalTypeId::TINYINT},
-		    {"RT_Blob2ArrayUInt16", LogicalTypeId::USMALLINT},
-		    {"RT_Blob2ArrayInt16", LogicalTypeId::SMALLINT},
-		    {"RT_Blob2ArrayUInt32", LogicalTypeId::UINTEGER},
-		    {"RT_Blob2ArrayInt32", LogicalTypeId::INTEGER},
-		    {"RT_Blob2ArrayUInt64", LogicalTypeId::UBIGINT},
-		    {"RT_Blob2ArrayInt64", LogicalTypeId::BIGINT},
-		    {"RT_Blob2ArrayFloat", LogicalTypeId::FLOAT},
-		    {"RT_Blob2ArrayDouble", LogicalTypeId::DOUBLE},
+		    {"RT_Cube2ArrayUInt8", LogicalTypeId::UTINYINT},
+		    {"RT_Cube2ArrayInt8", LogicalTypeId::TINYINT},
+		    {"RT_Cube2ArrayUInt16", LogicalTypeId::USMALLINT},
+		    {"RT_Cube2ArrayInt16", LogicalTypeId::SMALLINT},
+		    {"RT_Cube2ArrayUInt32", LogicalTypeId::UINTEGER},
+		    {"RT_Cube2ArrayInt32", LogicalTypeId::INTEGER},
+		    {"RT_Cube2ArrayUInt64", LogicalTypeId::UBIGINT},
+		    {"RT_Cube2ArrayInt64", LogicalTypeId::BIGINT},
+		    {"RT_Cube2ArrayFloat", LogicalTypeId::FLOAT},
+		    {"RT_Cube2ArrayDouble", LogicalTypeId::DOUBLE},
 		}};
 
 		// Register a separate function for each supported array type.
@@ -79,9 +82,9 @@ struct RT_Blob2Array {
 			const LogicalType logical_type(entry.second);
 
 			const auto executor = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Blob2Array::Blob2Array(args, state, result, logical_type);
+				RT_Cube2Array::Cube2Array(args, state, result, logical_type);
 			};
-			const ScalarFunction function(function_name, {LogicalType::BLOB, LogicalType::BOOLEAN},
+			const ScalarFunction function(function_name, {RasterTypes::DATACUBE(), LogicalType::BOOLEAN},
 			                              RasterTypes::ARRAY(logical_type), executor);
 
 			RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
@@ -91,36 +94,30 @@ struct RT_Blob2Array {
 };
 
 //======================================================================================================================
-// RT_Array2Blob
+// RT_Array2Cube
 //======================================================================================================================
 
-struct RT_Array2Blob {
+struct RT_Array2Cube {
 	//! Transform an ARRAY of values into a BLOB data band.
-	static void Array2Blob(const LogicalType &type, DataChunk &args, ExpressionState &state, Vector &result) {
+	static void Array2Cube(const LogicalType &type, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
 
-		MemoryStream data_buffer(Allocator::Get(state.GetContext()));
+		DataCube data_cube(Allocator::Get(state.GetContext()));
 
 		// We loop over the rows by hand because Executors only supports C++ primitives.
 		for (idx_t i = 0; i < count; i++) {
 			Value in_array = args.data[0].GetValue(i);
 
-			const TileHeader header = {CompressionAlg::FromString(args.data[1].GetValue(i).GetValue<string>()),
-			                           RasterDataType::FromLogicalType(type),
-			                           args.data[2].GetValue(i).GetValue<int32_t>(),
-			                           args.data[3].GetValue(i).GetValue<int32_t>(),
-			                           args.data[4].GetValue(i).GetValue<int32_t>(),
-			                           args.data[5].GetValue(i).GetValue<double>()};
+			const DataHeader in_header = {DataFormat::FromString(args.data[1].GetValue(i).GetValue<string>()),
+			                              RasterUtils::LogicalTypeToDataType(type),
+			                              args.data[2].GetValue(i).GetValue<int32_t>(),
+			                              args.data[3].GetValue(i).GetValue<int32_t>(),
+			                              args.data[4].GetValue(i).GetValue<int32_t>(),
+			                              args.data[5].GetValue(i).GetValue<double>()};
 
-			data_buffer.SetPosition(0);
-
-			std::size_t blob_size = RasterUtils::ArrayAsStream(in_array, header, data_buffer);
-			if (blob_size == 0) {
-				result.SetValue(i, Value::BLOB(""));
-			} else {
-				result.SetValue(i, Value::BLOB(data_buffer.GetData(), blob_size));
-			}
+			data_cube.LoadArray(in_array, in_header);
+			result.SetValue(i, data_cube.ToBlob());
 		}
 	}
 
@@ -132,13 +129,13 @@ struct RT_Array2Blob {
 		Transforms an ARRAY of values into a BLOB data band.
 
 		The function takes an ARRAY of values representing a raster tile, along with metadata parameters (e.g. dimensions,
-		data type, nodata value), and converts them into a BLOB that encodes the raw tile data and its metadata.
+		data format, nodata value), and converts them into a BLOB that encodes the raw tile data and its metadata.
 
 		The resulting BLOB can be stored in a DuckDB table and later transformed back into an ARRAY using the
-		RT_Blob2Array function.
+		RT_Cube2Array function.
 
-		The metadata parameters are as follows:
-		- `compression`: The compression algorithm to use for the tile data (e.g. 'none').
+		The parameters are as follows:
+		- `data_format`: The data format to pack the values in the array (e.g. 'RAW').
 		- `bands`: The number of bands or layers in the raster tile.
 		- `cols`: The number of columns in the tile.
 		- `rows`: The number of rows in the tile.
@@ -146,7 +143,7 @@ struct RT_Array2Blob {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		SELECT RT_Array2Blob([1,2,3,4]::INTEGER[], 'none', 1, 4, 1, -9999.0);
+		SELECT RT_Array2Cube([1,2,3,4]::INTEGER[], 'RAW', 1, 4, 1, -9999.0);
 	)";
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -158,19 +155,19 @@ struct RT_Array2Blob {
 		tags.insert("ext", "raster");
 		tags.insert("category", "scalar");
 
-		ScalarFunctionSet function_set("RT_Array2Blob");
+		ScalarFunctionSet function_set("RT_Array2Cube");
 
 		static constexpr std::array<std::pair<const char *, LogicalTypeId>, 10> type_variants = {{
-		    {"RT_Array2Blob", LogicalTypeId::UTINYINT},
-		    {"RT_Array2Blob", LogicalTypeId::TINYINT},
-		    {"RT_Array2Blob", LogicalTypeId::USMALLINT},
-		    {"RT_Array2Blob", LogicalTypeId::SMALLINT},
-		    {"RT_Array2Blob", LogicalTypeId::UINTEGER},
-		    {"RT_Array2Blob", LogicalTypeId::INTEGER},
-		    {"RT_Array2Blob", LogicalTypeId::UBIGINT},
-		    {"RT_Array2Blob", LogicalTypeId::BIGINT},
-		    {"RT_Array2Blob", LogicalTypeId::FLOAT},
-		    {"RT_Array2Blob", LogicalTypeId::DOUBLE},
+		    {"RT_Array2Cube", LogicalTypeId::UTINYINT},
+		    {"RT_Array2Cube", LogicalTypeId::TINYINT},
+		    {"RT_Array2Cube", LogicalTypeId::USMALLINT},
+		    {"RT_Array2Cube", LogicalTypeId::SMALLINT},
+		    {"RT_Array2Cube", LogicalTypeId::UINTEGER},
+		    {"RT_Array2Cube", LogicalTypeId::INTEGER},
+		    {"RT_Array2Cube", LogicalTypeId::UBIGINT},
+		    {"RT_Array2Cube", LogicalTypeId::BIGINT},
+		    {"RT_Array2Cube", LogicalTypeId::FLOAT},
+		    {"RT_Array2Cube", LogicalTypeId::DOUBLE},
 		}};
 
 		// Register a separate function for each supported array type.
@@ -179,12 +176,12 @@ struct RT_Array2Blob {
 			const LogicalType logical_type(entry.second);
 
 			const auto executor = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Array2Blob::Array2Blob(logical_type, args, state, result);
+				RT_Array2Cube::Array2Cube(logical_type, args, state, result);
 			};
 			const ScalarFunction function(function_name,
 			                              {LogicalType::LIST(logical_type), LogicalType::VARCHAR, LogicalType::INTEGER,
 			                               LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::DOUBLE},
-			                              LogicalType::BLOB, executor);
+			                              RasterTypes::DATACUBE(), executor);
 
 			function_set.AddFunction(function);
 		}
@@ -202,8 +199,8 @@ struct RT_Array2Blob {
 
 void RasterArrayFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
-	RT_Blob2Array::Register(loader);
-	RT_Array2Blob::Register(loader);
+	RT_Cube2Array::Register(loader);
+	RT_Array2Cube::Register(loader);
 }
 
 } // namespace duckdb
