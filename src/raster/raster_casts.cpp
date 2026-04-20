@@ -1,5 +1,6 @@
 #include "raster_types.hpp"
 #include "raster_casts.hpp"
+#include "data_cube.hpp"
 
 // DuckDB
 #include "duckdb/main/database.hpp"
@@ -48,6 +49,43 @@ struct RasterCasts {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// RT_DATACUBE -> LIST
+	//------------------------------------------------------------------------------------------------------------------
+
+	static bool DataCube2List(Vector &source, Vector &result, idx_t count, CastParameters &) {
+		DataCube cube_a(Allocator::DefaultAllocator());
+		DataCube cube_b(Allocator::DefaultAllocator());
+
+		const auto &element_type = ListType::GetChildType(result.GetType());
+
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = source.GetValue(i);
+
+			if (cube_a.LoadBlob(blob) > 0) {
+				if (cube_a.GetHeader().data_format != DataFormat::RAW) {
+					cube_a.ChangeFormat(DataFormat::RAW, cube_b);
+					Value temp_v = cube_b.ToArray(element_type, false);
+					Value temp_l = StructValue::GetChildren(temp_v)[5];
+					result.SetValue(i, std::move(temp_l));
+				} else {
+					Value temp_v = cube_a.ToArray(element_type, false);
+					Value temp_l = StructValue::GetChildren(temp_v)[5];
+					result.SetValue(i, std::move(temp_l));
+				}
+			} else {
+				result.SetValue(i, Value::LIST(element_type, vector<Value>()));
+			}
+		}
+
+		// If the source was a CONSTANT_VECTOR (all-literal input),
+		// the result must also be CONSTANT_VECTOR.
+		if (source.GetVectorType() == VectorType::CONSTANT_VECTOR) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 
@@ -59,15 +97,20 @@ struct RasterCasts {
 		// RT_BBOX -> STRUCT
 		loader.RegisterCastFunction(RasterTypes::BBOX(), LogicalType(LogicalTypeId::STRUCT), BBox2Struct, 0);
 
-		// RT_ARRAY -> STRUCT
 		auto element_types = {LogicalType::UTINYINT, LogicalType::TINYINT,  LogicalType::USMALLINT,
 		                      LogicalType::SMALLINT, LogicalType::UINTEGER, LogicalType::INTEGER,
 		                      LogicalType::UBIGINT,  LogicalType::BIGINT,   LogicalType::FLOAT,
 		                      LogicalType::DOUBLE};
 
+		// RT_ARRAY -> STRUCT
 		for (const auto &element_type : element_types) {
 			loader.RegisterCastFunction(RasterTypes::ARRAY(element_type), LogicalType(LogicalTypeId::STRUCT),
 			                            Array2Struct, 0);
+		}
+
+		// RT_DATACUBE -> LIST
+		for (const auto &element_type : element_types) {
+			loader.RegisterCastFunction(RasterTypes::DATACUBE(), LogicalType::LIST(element_type), DataCube2List, 0);
 		}
 	}
 };

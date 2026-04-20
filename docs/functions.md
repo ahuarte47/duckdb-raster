@@ -270,6 +270,9 @@ Functions return a struct with the following fields:
 + `no_data` (DOUBLE): NoData value for the tile (to be considered when applying algebraic operations). `-infinity` if not defined.
 + `values` (ARRAY): An array with the pixel values of the tile for the corresponding band and data type.
 
+Casting from the BLOB format to an array format is implemented as well, so you can also use a simple cast to transform a
+data band column into an array of values.
+
 #### Signature
 
 ```sql
@@ -310,6 +313,17 @@ Choose carefully which `RT_Cube2Array<data_type>` function to invoke; if the arr
 does not match the data type in the data band column, the function needs to adjust values accordingly,
 and performance may be affected. You can check the data type of the bands in the `metadata` column
 returned by `RT_Read`.
+
+You can use a simple cast to transform a data band column into an array of values, but note that in this
+case the function does not filter out NoData values from the resulting array:
+
+```sql
+SELECT
+	databand_1::DOUBLE[] AS r_array,
+FROM
+	RT_Read('path/to/raster/file.tif')
+;
+```
 
 ----
 

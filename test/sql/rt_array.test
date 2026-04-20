@@ -129,3 +129,41 @@ FROM
 ;
 ----
 0	62.911198	255
+
+query IIIIIIII
+WITH __input AS (
+    SELECT RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, 6)::INTEGER[] AS arr
+)
+SELECT
+    list_min(arr) AS a_min,
+    list_max(arr) AS a_max,
+    list_extract(arr, 1) AS a_1,
+    list_extract(arr, 2) AS a_2,
+    list_extract(arr, 3) AS a_3,
+    list_extract(arr, 4) AS a_4,
+    list_extract(arr, 5) AS a_5,
+    list_extract(arr, 6) AS a_6
+FROM
+    __input
+;
+----
+1	6	1	2	3	4	5	6
+
+query IIIIIIII
+WITH __input AS (
+    SELECT RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, 6)::FLOAT[] AS arr
+)
+SELECT
+    list_min(arr) AS a_min,
+    list_max(arr) AS a_max,
+    list_extract(arr, 1) AS a_1,
+    list_extract(arr, 2) AS a_2,
+    list_extract(arr, 3) AS a_3,
+    list_extract(arr, 4) AS a_4,
+    list_extract(arr, 5) AS a_5,
+    list_extract(arr, 6) AS a_6
+FROM
+    __input
+;
+----
+1	6	1	2	3	4	5	6

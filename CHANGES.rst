@@ -4,6 +4,7 @@ Release history
 0.5.0
 ++++++++++++++++++
 
+- New cast functions to convert between a data band column into an ARRAY of the corresponding element type.
 - Rename `RT_Blob2Array<TYPE>` functions to `RT_Cube2Array<TYPE>` for consistency.
 - New `RT_Array2Cube` functions to transform ARRAYS of the corresponding type into data band BLOBs.
 - New unary functions and binary operations (e.g. `+`, `-`, `*`, `/`) with proper handling of nodata values for data cubes.
