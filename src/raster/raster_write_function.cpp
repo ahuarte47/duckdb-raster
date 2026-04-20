@@ -1,6 +1,7 @@
 #include "raster_write_function.hpp"
 #include "raster_types.hpp"
 #include "raster_utils.hpp"
+#include "data_cube.hpp"
 #include "function_builder.hpp"
 
 // DuckDB
@@ -260,14 +261,15 @@ struct RT_Write {
 
 		// Accumulate input tiles (rows) into temporary rasters
 
+		std::vector<DataCube> data_cubes;
+
 		input.data[bind_data.geometry_col].Flatten(input.size());
 		const string_t *geom_data = FlatVector::GetData<string_t>(input.data[bind_data.geometry_col]);
 
 		for (idx_t band_idx : bind_data.databand_cols) {
 			input.data[band_idx].Flatten(input.size());
+			data_cubes.emplace_back(Allocator::Get(context.client));
 		}
-
-		MemoryStream data_buffer(Allocator::Get(context.client));
 
 		for (idx_t row_idx = 0; row_idx < input.size(); row_idx++) {
 			GeometryExtent extent = GeometryExtent::Empty();
@@ -285,20 +287,20 @@ struct RT_Write {
 			// Extract the tile data from the band columns
 
 			GDALDataType data_type = GDT_Unknown;
-			std::vector<TileHeader> tile_headers;
+			int cube_idx = 0;
 			int n_bands = 0;
 			int x_size = 0;
 			int y_size = 0;
 
-			data_buffer.SetPosition(0);
-
 			for (idx_t band_idx : bind_data.databand_cols) {
 				const auto &band_value = input.data[band_idx].GetValue(row_idx);
-				TileHeader tile_header;
 
-				if (RasterUtils::BlobAsStream(band_value, tile_header, data_buffer) > 0) {
+				DataCube &data_cube = data_cubes[cube_idx++];
+
+				if (data_cube.LoadBlob(band_value) > 0) {
+					DataHeader tile_header = data_cube.GetHeader();
 					// Process the data band
-					GDALDataType data_type_i = RasterDataType::ToGDALDataType(tile_header.data_type);
+					GDALDataType data_type_i = RasterUtils::DataTypeToGdalType(tile_header.data_type);
 					int x_size_i = tile_header.cols;
 					int y_size_i = tile_header.rows;
 
@@ -315,7 +317,6 @@ struct RT_Write {
 						global_state.input_tiles.clear();
 						throw std::runtime_error("Inconsistent tile sizes in input data bands");
 					}
-					tile_headers.push_back(tile_header);
 					n_bands += tile_header.bands;
 
 				} else {
@@ -324,14 +325,14 @@ struct RT_Write {
 			}
 
 			if (n_bands == 0 || x_size == 0 || y_size == 0) {
-				RASTER_SCAN_DEBUG_LOG(2, "Skipping empty tile at row %ld", row_idx);
+				RASTER_SCAN_DEBUG_LOG(2, "Skipping empty tile at row %lu", row_idx);
 				continue;
 			}
 
 			// Create the dataset for the tile and write the data to it
 
 			RASTER_SCAN_DEBUG_LOG(
-			    2, "Writing tile for row %ld: data_type=%d, bands=%d, size=(%d x %d), extent=(%lf, %lf, %lf, %lf)",
+			    2, "Writing tile for row %lu: data_type=%d, bands=%d, size=(%d x %d), extent=(%lf, %lf, %lf, %lf)",
 			    row_idx, data_type, n_bands, x_size, y_size, x_min, y_min, x_max, y_max);
 
 			GDALDatasetUniquePtr dataset(driver->Create("", x_size, y_size, n_bands, data_type, nullptr));
@@ -343,11 +344,13 @@ struct RT_Write {
 			double geo_transform[6] = {x_min, (x_max - x_min) / x_size, 0, y_max, 0, (y_min - y_max) / y_size};
 			dataset->SetGeoTransform(geo_transform);
 
-			data_ptr_t data_ptr = data_buffer.GetData();
 			int data_size = GDALGetDataTypeSizeBytes(data_type);
 			int b = 1;
 
-			for (const auto &header : tile_headers) {
+			for (DataCube &data_cube : data_cubes) {
+				data_ptr_t data_ptr = data_cube.GetBuffer().GetData() + sizeof(DataHeader);
+				DataHeader header = data_cube.GetHeader();
+
 				for (int i = 0; i < header.bands; i++) {
 					GDALRasterBand *band = dataset->GetRasterBand(b);
 					if (!band) {

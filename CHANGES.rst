@@ -1,6 +1,13 @@
 Release history
 ---------------
 
+0.5.0
+++++++++++++++++++
+
+- Rename `RT_Blob2Array<TYPE>` functions to `RT_Cube2Array<TYPE>` for consistency.
+- New `RT_Array2Cube` functions to transform ARRAYS of the corresponding type into data band BLOBs.
+- New unary functions and binary operations (e.g. `+`, `-`, `*`, `/`) with proper handling of nodata values for data cubes.
+
 0.4.0
 ++++++++++++++++++
 

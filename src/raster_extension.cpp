@@ -8,10 +8,12 @@
 
 // GDAL/Raster
 #include "raster/gdal_module.hpp"
+#include "raster/raster_casts.hpp"
 #include "raster/raster_types.hpp"
 #include "raster/raster_drivers_function.hpp"
 #include "raster/raster_read_function.hpp"
 #include "raster/raster_array_functions.hpp"
+#include "raster/raster_math_functions.hpp"
 #include "raster/raster_write_function.hpp"
 
 namespace duckdb {
@@ -21,9 +23,11 @@ static void LoadInternal(ExtensionLoader &loader) {
 	GdalModule::Register(loader);
 	// Register RASTER types and functions
 	RasterTypes::Register(loader);
+	RasterCastsFunctions::Register(loader);
 	RasterDriversFunction::Register(loader);
 	RasterReadFunction::Register(loader);
 	RasterArrayFunctions::Register(loader);
+	RasterMathFunctions::Register(loader);
 	RasterWriteFunction::Register(loader);
 }
 

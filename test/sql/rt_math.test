@@ -1,0 +1,134 @@
+# name: test/sql/rt_math.test
+# description: test spatial_raster extension
+# group: [sql]
+
+require raster
+
+query IIII
+WITH __input AS (
+    SELECT RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, 6) AS cube
+)
+SELECT
+    list_min(RT_Cube2ArrayInt32(cube, false).values) AS a_min,
+    list_max(RT_Cube2ArrayInt32(cube, false).values) AS a_max,
+    list_min(RT_Cube2ArrayInt32(cube, true ).values) AS b_min,
+    list_max(RT_Cube2ArrayInt32(cube, true ).values) AS b_max
+FROM
+    __input
+;
+----
+1	6	1	5
+
+query I
+WITH __input AS (
+    SELECT
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS a,
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS b
+)
+SELECT
+    RT_Cube2ArrayInt32(a + b, false).values
+FROM
+    __input
+;
+----
+[2, 4, 6, 8, 10, 12]
+
+query I
+WITH __input AS (
+    SELECT
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS a,
+        1.5 AS b
+)
+SELECT
+    RT_Cube2ArrayFloat(a + b, false).values
+FROM
+    __input
+;
+----
+[2.5, 3.5, 4.5, 5.5, 6.5, 7.5]
+
+query I
+WITH __input AS (
+    SELECT
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS a,
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS b
+)
+SELECT
+    RT_Cube2ArrayInt32(RT_CubeEqual(a, b), false).values
+FROM
+    __input
+;
+----
+[1, 1, 1, 1, 1, 1]
+
+query I
+WITH __input AS (
+    SELECT
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS a,
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS b
+)
+SELECT
+    RT_Cube2ArrayInt32(a - b, false).values
+FROM
+    __input
+;
+----
+[0, 0, 0, 0, 0, 0]
+
+query I
+WITH __input AS (
+    SELECT
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS a,
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS b
+)
+SELECT
+    RT_Cube2ArrayInt32(RT_CubeGreater(a, b), false).values
+FROM
+    __input
+;
+----
+[0, 0, 0, 0, 0, 0]
+
+query I
+WITH __input AS (
+    SELECT
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS a,
+        RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS b
+)
+SELECT
+    RT_Cube2ArrayInt32(RT_CubeGreaterEqual(a, b), false).values
+FROM
+    __input
+;
+----
+[1, 1, 1, 1, 1, 1]
+
+query III
+WITH __input AS (
+    SELECT
+        databand_1 AS red,
+        databand_3 AS nir
+    FROM
+        RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+),
+__ndvi AS (
+    SELECT
+        (nir - red) / (nir + red) AS ndvi
+    FROM
+        __input
+),
+__array AS (
+    SELECT
+        RT_Cube2ArrayFloat(ndvi, false) AS r
+    FROM
+        __ndvi
+)
+SELECT
+    list_min(r.values) AS r_min,
+    list_stddev_pop(r.values) AS r_avg,
+    list_max(r.values) AS r_max
+FROM
+    __array
+;
+----
+-1.0	0.28172306838728434	1.0

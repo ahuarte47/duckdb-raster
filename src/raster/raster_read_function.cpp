@@ -1,7 +1,7 @@
 #include "raster_read_function.hpp"
-#include "raster_types.hpp"
 #include "raster_utils.hpp"
 #include "filter_eval.hpp"
+#include "data_cube.hpp"
 #include "function_builder.hpp"
 #include <sstream>
 
@@ -80,9 +80,9 @@ struct RT_Read {
 	struct BindData final : TableFunctionData {
 		string file_name;
 		named_parameter_map_t parameters;
-		CompressionAlg::Value compression_alg = CompressionAlg::NONE;
+		DataFormat::Value data_format = DataFormat::RAW;
 		bool skip_empty_tiles = true;
-		bool datacube = false;
+		bool make_datacube = false;
 
 		GDALDatasetUniquePtr dataset;
 		std::string metadata_ds;
@@ -115,14 +115,14 @@ struct RT_Read {
 		const auto file_path = input.inputs[0].GetValue<string>();
 		const auto &params = input.named_parameters;
 
-		CompressionAlg::Value compression_alg = CompressionAlg::NONE;
-		if (params.find("compression") != params.end()) {
-			compression_alg = CompressionAlg::FromString(params.at("compression").GetValue<string>());
+		DataFormat::Value data_format = DataFormat::RAW;
+		if (params.find("data_format") != params.end()) {
+			data_format = DataFormat::FromString(params.at("data_format").GetValue<string>());
 		}
 
-		bool datacube = false;
+		bool make_datacube = false;
 		if (params.find("datacube") != params.end()) {
-			datacube = params.at("datacube").GetValue<bool>();
+			make_datacube = params.at("datacube").GetValue<bool>();
 		}
 
 		bool skip_empty_tiles = true;
@@ -202,7 +202,7 @@ struct RT_Read {
 		RASTER_SCAN_DEBUG_LOG(1, " > Block size: %d x %d", block_size_x, block_size_y);
 		RASTER_SCAN_DEBUG_LOG(1, " > Tiles: %d x %d", tiles_x, tiles_y);
 		RASTER_SCAN_DEBUG_LOG(1, " > Total rows (tiles): %d", row_count);
-		RASTER_SCAN_DEBUG_LOG(1, " > Compression: '%s'", CompressionAlg::ToString(compression_alg).c_str());
+		RASTER_SCAN_DEBUG_LOG(1, " > Data format: '%s'", DataFormat::ToString(data_format).c_str());
 
 		// Fill the column definitions.
 
@@ -263,10 +263,10 @@ struct RT_Read {
 			}
 
 			// For datacubes, we return a single BLOB column containing all the bands.
-			if (!datacube || b == 1) {
-				band_name = datacube ? "datacube" : StringUtil::Format("databand_%d", b);
+			if (!make_datacube || b == 1) {
+				band_name = make_datacube ? "datacube" : StringUtil::Format("databand_%d", b);
 				names.emplace_back(band_name);
-				return_types.emplace_back(LogicalType::BLOB);
+				return_types.emplace_back(RasterTypes::DATACUBE());
 			}
 		}
 
@@ -291,8 +291,8 @@ struct RT_Read {
 		metadata_ds << "{";
 		metadata_ds << "\"file_format\": \"raster\", ";
 		metadata_ds << "\"version\": \"0.1.0\", ";
-		metadata_ds << "\"compression\": \"" << CompressionAlg::ToString(compression_alg) << "\", ";
-		metadata_ds << "\"datacube\": " << (datacube ? "true" : "false") << ", ";
+		metadata_ds << "\"data_format\": \"" << DataFormat::ToString(data_format) << "\", ";
+		metadata_ds << "\"datacube\": " << (make_datacube ? "true" : "false") << ", ";
 		metadata_ds << "\"crs\": \"" << crs << "\", ";
 		metadata_ds << "\"transform\": [" << gt[0] << ", " << gt[1] << ", " << gt[2] << ", " << gt[3] << ", " << gt[4]
 		            << ", " << gt[5] << "], ";
@@ -345,9 +345,9 @@ struct RT_Read {
 		auto result = make_uniq<BindData>();
 		result->file_name = file_path;
 		result->parameters = params;
-		result->compression_alg = compression_alg;
+		result->data_format = data_format;
 		result->skip_empty_tiles = skip_empty_tiles;
-		result->datacube = datacube;
+		result->make_datacube = make_datacube;
 		result->dataset = std::move(dataset);
 		result->metadata_ds = metadata_ds.str();
 		result->crs = std::move(crs);
@@ -469,9 +469,10 @@ struct RT_Read {
 				    expr_copy, ExpressionClass::BOUND_COLUMN_REF, [&do_pushdown](unique_ptr<Expression> &child) {
 					    if (do_pushdown) {
 						    const auto &col_ref = child->Cast<BoundColumnRefExpression>();
+						    const auto &type_id = col_ref.return_type.id();
 
 						    // If filter expressions reference BLOBs, we totally delegate the filter to DuckDB.
-						    if (col_ref.return_type.id() == LogicalTypeId::BLOB) {
+						    if (type_id == LogicalTypeId::BLOB || type_id == RasterTypes::DATACUBE().id()) {
 							    do_pushdown = false;
 							    return;
 						    }
@@ -517,7 +518,7 @@ struct RT_Read {
 	//! Fill the output chunk with data for the specified tile coordinates.
 	static bool FillOutput(const BindData &bind_data, const idx_t &row_id, const idx_t &row_index, const int &level,
 	                       const int &tile_x, const int &tile_y, const FilterContext &filter_context,
-	                       MemoryStream &data_buffer, DataChunk &output) {
+	                       DataCube &raw_cube, DataCube &out_cube, DataChunk &output) {
 		GDALDataset *dataset = bind_data.dataset.get();
 
 		const auto &metadata_ds = bind_data.metadata_ds;
@@ -557,6 +558,9 @@ struct RT_Read {
 		const double x_max = MaxValue<double>(MaxValue<double>(pt0.x, pt1.x), MaxValue<double>(pt2.x, pt3.x));
 		const double y_max = MaxValue<double>(MaxValue<double>(pt0.y, pt1.y), MaxValue<double>(pt2.y, pt3.y));
 
+		Value bbox = Value::STRUCT({{"xmin", x_min}, {"ymin", y_min}, {"x_max", x_max}, {"ymax", y_max}});
+		bbox.Reinterpret(RasterTypes::BBOX());
+
 		const std::string geometry_wkt =
 		    StringUtil::Format("POLYGON ((%f %f, %f %f, %f %f, %f %f, %f %f))", pt0.x, pt0.y, pt1.x, pt1.y, pt2.x,
 		                       pt2.y, pt3.x, pt3.y, pt0.x, pt0.y);
@@ -564,7 +568,7 @@ struct RT_Read {
 		const RasterRow raster_row {Value::BIGINT(row_id),
 		                            Value::DOUBLE(pt0.x + 0.5 * (pt2.x - pt0.x)),
 		                            Value::DOUBLE(pt0.y + 0.5 * (pt2.y - pt0.y)),
-		                            Value::STRUCT({{"xmin", x_min}, {"ymin", y_min}, {"xmax", x_max}, {"ymax", y_max}}),
+		                            bbox,
 		                            Value(geometry_wkt),
 		                            Value::INTEGER(level),
 		                            Value::INTEGER(tile_x),
@@ -626,38 +630,29 @@ struct RT_Read {
 				// Write band data as columns...
 				if (static_cast<int>(dim_index) < RASTER_FIRST_BAND_COLUMN_INDEX + num_bands) {
 					const GDALDataType &data_type = bind_data.data_type;
-					const int data_size = GDALGetDataTypeSizeBytes(data_type);
-					const CompressionAlg::Value &compression = bind_data.compression_alg;
+					const DataFormat::Value &data_format = bind_data.data_format;
 					const double &nodata_value = bind_data.nodata_value;
-					const bool datacube = bind_data.datacube;
-
-					idx_t data_length = sizeof(TileHeader);
-					if (datacube) {
-						data_length += data_size * size_x * size_y * num_bands;
-					} else {
-						data_length += data_size * size_x * size_y;
-					}
-
-					// Allocate the buffer if it hasn't been allocated yet.
-					data_buffer.SetPosition(0);
-					data_buffer.GrowCapacity(data_length);
+					const bool make_datacube = bind_data.make_datacube;
 
 					// Write the header of the data band[s].
-					TileHeader header = {compression,
-					                     RasterDataType::FromGDALDataType(data_type),
-					                     datacube ? num_bands : 1,
+
+					DataHeader header = {DataFormat::RAW,
+					                     RasterUtils::GdalTypeToDataType(data_type),
+					                     make_datacube ? num_bands : 1,
 					                     size_x,
 					                     size_y,
 					                     nodata_value};
-					data_buffer.WriteData(const_data_ptr_t(&header), sizeof(TileHeader));
+
+					raw_cube.SetHeader(header, true);
+					MemoryStream &raw_buffer = raw_cube.GetBuffer();
 
 					// For datacube, return one unique N-dimensional column with all bands interleaved,
 					// Otherwise each band is returned as a separate column.
-					data_ptr_t data_ptr = data_buffer.GetData() + sizeof(TileHeader);
+					data_ptr_t raw_ptr = raw_buffer.GetData() + sizeof(DataHeader);
 					CPLErr read_err = CE_None;
-					if (datacube) {
+					if (make_datacube) {
 						// Read the data of all bands...
-						read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_ptr, size_x,
+						read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, raw_ptr, size_x,
 						                             size_y, data_type, num_bands, nullptr, 0, 0, 0, nullptr);
 
 					} else {
@@ -665,22 +660,27 @@ struct RT_Read {
 						GDALRasterBand *band = dataset->GetRasterBand(band_index + 1);
 
 						// Read the data of the band...
-						read_err = band->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_ptr, size_x, size_y,
+						read_err = band->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, raw_ptr, size_x, size_y,
 						                          data_type, 0, 0, nullptr);
 					}
-					data_buffer.SetPosition(0);
 
 					// Is there an error reading the tile data?
 					if (read_err != CE_None) {
 						const std::string error = RasterUtils::GetLastGdalErrorMsg();
 						RASTER_SCAN_DEBUG_LOG(1, "Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
-						output.data[col_idx].SetValue(row_index, Value::BLOB(""));
+						output.data[col_idx].SetValue(row_index, DataCube::EMPTY_CUBE().ToBlob());
 						continue;
 					}
 
-					// Write the tile data as a blob.
-					Value data_value = RasterUtils::TileAsBlob(header, data_buffer, data_length);
-					output.data[col_idx].SetValue(row_index, data_value);
+					raw_buffer.SetPosition(raw_cube.GetExpectedSizeBytes());
+
+					// Write the tile data as a BLOB column.
+					if (data_format != DataFormat::RAW) {
+						raw_cube.ChangeFormat(data_format, out_cube);
+						output.data[col_idx].SetValue(row_index, out_cube.ToBlob());
+					} else {
+						output.data[col_idx].SetValue(row_index, raw_cube.ToBlob());
+					}
 				} else {
 					throw IOException("Invalid column index: %ld", dim_index);
 				}
@@ -713,23 +713,24 @@ struct RT_Read {
 		const int start_ty = static_cast<int>(start_row / tiles_x);
 		const int start_tx = static_cast<int>(start_row % tiles_x);
 
-		RASTER_SCAN_DEBUG_LOG(2, "Execute: start_row=%ld, vector_size=%ld", start_row, vector_size);
+		RASTER_SCAN_DEBUG_LOG(2, "Execute: start_row=%lu, vector_size=%lu", start_row, vector_size);
 
 		const auto &filter_expressions = bind_data.filter_expressions;
 		const auto &column_ids = bind_data.column_ids;
 		const auto &column_types = bind_data.column_types;
 		const FilterContext filter_context(context, filter_expressions, column_ids, column_types);
 
-		// Loop over the tiles and fill the output chunk.
+		// Loop over the tiles and fill the output chunk, it reuses DataCubes for avoiding repeated memory allocations.
 
-		MemoryStream data_buffer(Allocator::Get(context));
+		DataCube raw_cube(Allocator::Get(context));
+		DataCube out_cube(Allocator::Get(context));
 
 		for (int tile_y = start_ty; tile_y < tiles_y && output_size < vector_size; ++tile_y) {
 			const int first_tx = (tile_y == start_ty) ? start_tx : 0;
 
 			for (int tile_x = first_tx; tile_x < tiles_x && output_size < vector_size; ++tile_x) {
 				// Process one tile.
-				if (FillOutput(bind_data, row_id, output_size, 0, tile_x, tile_y, filter_context, data_buffer,
+				if (FillOutput(bind_data, row_id, output_size, 0, tile_x, tile_y, filter_context, raw_cube, out_cube,
 				               output)) {
 					output_size++;
 				}
@@ -846,7 +847,7 @@ struct RT_Read {
 		func.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
 		func.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
 		func.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
-		func.named_parameters["compression"] = LogicalType::VARCHAR;
+		func.named_parameters["data_format"] = LogicalType::VARCHAR;
 		func.named_parameters["blocksize_x"] = LogicalType::INTEGER;
 		func.named_parameters["blocksize_y"] = LogicalType::INTEGER;
 		func.named_parameters["skip_empty_tiles"] = LogicalType::BOOLEAN;
