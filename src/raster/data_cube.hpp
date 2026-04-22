@@ -84,7 +84,7 @@ public:
 	DataCube(Allocator &allocator);
 
 	//! Get an empty DataCube instance.
-	static DataCube EMPTY_CUBE();
+	static DataCube EMPTY_CUBE(DataType::Value data_type = DataType::UINT8);
 
 private:
 	//! The allocator used for the data buffer.
@@ -96,9 +96,6 @@ private:
 	MemoryStream buffer;
 
 public:
-	//! Change the data format of the data cube, converting the data buffer accordingly.
-	void ChangeFormat(const DataFormat::Value &new_format, DataCube &r) const;
-
 	//! Get the header of the data cube.
 	DataHeader GetHeader() const;
 	//! Set the header of the data cube.
@@ -115,12 +112,12 @@ public:
 	int64_t GetExpectedSizeBytes() const;
 
 	//! Load the data cube from a BLOB value, parsing the header and the data buffer.
-	int64_t LoadBlob(const Value &blob);
+	void LoadBlob(const Value &blob);
 	//! Convert the data cube to a BLOB value.
 	Value ToBlob() const;
 
 	//! Load the data cube from an ARRAY value, parsing the header and the data values in the array.
-	int64_t LoadArray(const Value &in_array, const DataHeader &in_header);
+	void LoadArray(const Value &in_array, const DataHeader &in_header);
 	//! Convert the data cube to an ARRAY value, ignoring no-data values if specified.
 	Value ToArray(const LogicalType &output_type, bool filter_nodata = false);
 
@@ -138,9 +135,15 @@ private:
 	static bool IsValidValue(double value, double no_data);
 
 	//! Read a value from the data buffer at the specified index.
-	static double ReadValueAsDouble(DataType::Value data_type, const data_ptr_t data_ptr, idx_t value_index);
+	template <typename T>
+	static T ReadValueAs(DataType::Value data_type, const data_ptr_t data_ptr, idx_t value_index);
 
 public:
+	//! Change the data format of the data cube, converting the data buffer accordingly.
+	void ChangeFormat(const DataFormat::Value &new_format, DataCube &r) const;
+	//! Change the data type of the data cube, converting the data buffer accordingly.
+	void ChangeType(const DataType::Value &new_data_type, DataCube &r) const;
+
 	//! Apply a unary operation to the data cube, storing the result in another data cube.
 	static void Apply(CubeUnaryOp op, const DataCube &a, DataCube &r);
 	//! Apply a binary operation to two data cubes, storing the result in a third data cube.

@@ -668,7 +668,7 @@ struct RT_Read {
 					if (read_err != CE_None) {
 						const std::string error = RasterUtils::GetLastGdalErrorMsg();
 						RASTER_SCAN_DEBUG_LOG(1, "Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
-						output.data[col_idx].SetValue(row_index, DataCube::EMPTY_CUBE().ToBlob());
+						output.data[col_idx].SetValue(row_index, DataCube::EMPTY_CUBE(header.data_type).ToBlob());
 						continue;
 					}
 

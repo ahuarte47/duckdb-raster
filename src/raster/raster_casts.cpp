@@ -53,22 +53,25 @@ struct RasterCasts {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static bool DataCube2List(Vector &source, Vector &result, idx_t count, CastParameters &) {
-		DataCube cube_a(Allocator::DefaultAllocator());
-		DataCube cube_b(Allocator::DefaultAllocator());
+		DataCube arg_cube(Allocator::DefaultAllocator());
+		DataCube raw_cube(Allocator::DefaultAllocator());
 
 		const auto &element_type = ListType::GetChildType(result.GetType());
 
 		for (idx_t i = 0; i < count; i++) {
 			Value blob = source.GetValue(i);
+			arg_cube.LoadBlob(blob);
 
-			if (cube_a.LoadBlob(blob) > 0) {
-				if (cube_a.GetHeader().data_format != DataFormat::RAW) {
-					cube_a.ChangeFormat(DataFormat::RAW, cube_b);
-					Value temp_v = cube_b.ToArray(element_type, false);
+			if (arg_cube.GetCubeSize() > 0) {
+				const DataHeader header = arg_cube.GetHeader();
+
+				if (header.data_format != DataFormat::RAW) {
+					arg_cube.ChangeFormat(DataFormat::RAW, raw_cube);
+					Value temp_v = raw_cube.ToArray(element_type, false);
 					Value temp_l = StructValue::GetChildren(temp_v)[5];
 					result.SetValue(i, std::move(temp_l));
 				} else {
-					Value temp_v = cube_a.ToArray(element_type, false);
+					Value temp_v = arg_cube.ToArray(element_type, false);
 					Value temp_l = StructValue::GetChildren(temp_v)[5];
 					result.SetValue(i, std::move(temp_l));
 				}

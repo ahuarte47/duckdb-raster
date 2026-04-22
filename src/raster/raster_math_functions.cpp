@@ -25,6 +25,94 @@ static void RestoreConstantIfNeeded(const DataChunk &args, Vector &result) {
 }
 
 //======================================================================================================================
+// RT_ChangeType
+//======================================================================================================================
+
+struct RT_ChangeType {
+	//! Change the data type of a data cube.
+	static void Apply(const LogicalType &logicalType, DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 1);
+		const idx_t count = args.size();
+
+		const DataType::Value data_type = RasterUtils::LogicalTypeToDataType(logicalType);
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+		DataCube raw_cube(Allocator::Get(state.GetContext()));
+		DataCube res_cube(Allocator::Get(state.GetContext()));
+
+		// We loop over the rows by hand because Executors only supports C++ primitives.
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+
+			arg_cube.LoadBlob(blob);
+
+			const DataHeader header = arg_cube.GetHeader();
+			if (header.data_format != DataFormat::RAW) {
+				arg_cube.ChangeFormat(DataFormat::RAW, raw_cube);
+				raw_cube.ChangeType(data_type, res_cube);
+				result.SetValue(i, res_cube.ToBlob());
+			} else {
+				arg_cube.ChangeType(data_type, res_cube);
+				result.SetValue(i, res_cube.ToBlob());
+			}
+		}
+		RestoreConstantIfNeeded(args, result);
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Changes the data type of a data cube, converting the data buffer accordingly.
+
+		The output data cube will have the same dimensions and data format as the input cube, but with the
+		specified data type.
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT RT_Cube2TypeUInt8(databand_1 + databand_2) AS r FROM RT_Read('some/file/path/filename.tif);
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "scalar");
+
+		static constexpr std::array<std::pair<const char *, LogicalTypeId>, 10> type_variants = {{
+		    {"RT_Cube2TypeUInt8", LogicalTypeId::UTINYINT},
+		    {"RT_Cube2TypeInt8", LogicalTypeId::TINYINT},
+		    {"RT_Cube2TypeUInt16", LogicalTypeId::USMALLINT},
+		    {"RT_Cube2TypeInt16", LogicalTypeId::SMALLINT},
+		    {"RT_Cube2TypeUInt32", LogicalTypeId::UINTEGER},
+		    {"RT_Cube2TypeInt32", LogicalTypeId::INTEGER},
+		    {"RT_Cube2TypeUInt64", LogicalTypeId::UBIGINT},
+		    {"RT_Cube2TypeInt64", LogicalTypeId::BIGINT},
+		    {"RT_Cube2TypeFloat", LogicalTypeId::FLOAT},
+		    {"RT_Cube2TypeDouble", LogicalTypeId::DOUBLE},
+		}};
+
+		// Register a separate function for each supported array type.
+		for (const auto &entry : type_variants) {
+			const char *function_name = entry.first;
+			const LogicalType logical_type(entry.second);
+
+			const auto executor = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
+				RT_ChangeType::Apply(logical_type, args, state, result);
+			};
+			const ScalarFunction function(function_name, {RasterTypes::DATACUBE()}, RasterTypes::DATACUBE(), executor);
+
+			RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
+			                                 tags);
+		}
+	}
+};
+
+//======================================================================================================================
 // RT_Math
 //======================================================================================================================
 
@@ -34,16 +122,23 @@ struct RT_Math {
 		D_ASSERT(args.data.size() == 1);
 		const idx_t count = args.size();
 
-		DataCube cube_a(Allocator::Get(state.GetContext()));
-		DataCube cube_r(Allocator::Get(state.GetContext()));
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+		DataCube raw_cube(Allocator::Get(state.GetContext()));
+		DataCube res_cube(Allocator::Get(state.GetContext()));
 
 		// We loop over the rows by hand because Executors only supports C++ primitives.
 		for (idx_t i = 0; i < count; i++) {
-			if (cube_a.LoadBlob(args.data[0].GetValue(i)) > 0) {
-				DataCube::Apply(op, cube_a, cube_r);
-				result.SetValue(i, cube_r.ToBlob());
+			Value blob = args.data[0].GetValue(i);
+			arg_cube.LoadBlob(blob);
+
+			const DataHeader header = arg_cube.GetHeader();
+			if (header.data_format != DataFormat::RAW) {
+				arg_cube.ChangeFormat(DataFormat::RAW, raw_cube);
+				DataCube::Apply(op, raw_cube, res_cube);
+				result.SetValue(i, res_cube.ToBlob());
 			} else {
-				result.SetValue(i, DataCube::EMPTY_CUBE().ToBlob());
+				DataCube::Apply(op, arg_cube, res_cube);
+				result.SetValue(i, res_cube.ToBlob());
 			}
 		}
 		RestoreConstantIfNeeded(args, result);
@@ -54,18 +149,40 @@ struct RT_Math {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 
-		DataCube cube_a(Allocator::Get(state.GetContext()));
-		DataCube cube_b(Allocator::Get(state.GetContext()));
-		DataCube cube_r(Allocator::Get(state.GetContext()));
+		DataCube arg_cube_a(Allocator::Get(state.GetContext()));
+		DataCube arg_cube_b(Allocator::Get(state.GetContext()));
+		DataCube raw_cube_a(Allocator::Get(state.GetContext()));
+		DataCube raw_cube_b(Allocator::Get(state.GetContext()));
+		DataCube res_cube__(Allocator::Get(state.GetContext()));
+		DataCube *cube_a = nullptr;
+		DataCube *cube_b = nullptr;
 
 		// We loop over the rows by hand because Executors only supports C++ primitives.
 		for (idx_t i = 0; i < count; i++) {
-			if (cube_a.LoadBlob(args.data[0].GetValue(i)) > 0 && cube_b.LoadBlob(args.data[1].GetValue(i)) > 0) {
-				DataCube::Apply(op, cube_a, cube_b, cube_r);
-				result.SetValue(i, cube_r.ToBlob());
+			Value blob_a = args.data[0].GetValue(i);
+			Value blob_b = args.data[1].GetValue(i);
+
+			arg_cube_a.LoadBlob(blob_a);
+			arg_cube_b.LoadBlob(blob_b);
+
+			const DataHeader header_a = arg_cube_a.GetHeader();
+			if (header_a.data_format != DataFormat::RAW) {
+				arg_cube_a.ChangeFormat(DataFormat::RAW, raw_cube_a);
+				cube_a = &raw_cube_a;
 			} else {
-				result.SetValue(i, DataCube::EMPTY_CUBE().ToBlob());
+				cube_a = &arg_cube_a;
 			}
+
+			const DataHeader header_b = arg_cube_b.GetHeader();
+			if (header_b.data_format != DataFormat::RAW) {
+				arg_cube_b.ChangeFormat(DataFormat::RAW, raw_cube_b);
+				cube_b = &raw_cube_b;
+			} else {
+				cube_b = &arg_cube_b;
+			}
+
+			DataCube::Apply(op, *cube_a, *cube_b, res_cube__);
+			result.SetValue(i, res_cube__.ToBlob());
 		}
 		RestoreConstantIfNeeded(args, result);
 	}
@@ -75,17 +192,25 @@ struct RT_Math {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 
-		DataCube cube_a(Allocator::Get(state.GetContext()));
-		DataCube cube_r(Allocator::Get(state.GetContext()));
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+		DataCube raw_cube(Allocator::Get(state.GetContext()));
+		DataCube res_cube(Allocator::Get(state.GetContext()));
 
 		// We loop over the rows by hand because Executors only supports C++ primitives.
 		for (idx_t i = 0; i < count; i++) {
-			if (cube_a.LoadBlob(args.data[0].GetValue(i)) > 0) {
-				const double value_b = args.data[1].GetValue(i).GetValue<double>();
-				DataCube::Apply(op, cube_a, value_b, cube_r);
-				result.SetValue(i, cube_r.ToBlob());
+			Value blob = args.data[0].GetValue(i);
+
+			arg_cube.LoadBlob(blob);
+			const double value_b = args.data[1].GetValue(i).GetValue<double>();
+
+			const DataHeader header = arg_cube.GetHeader();
+			if (header.data_format != DataFormat::RAW) {
+				arg_cube.ChangeFormat(DataFormat::RAW, raw_cube);
+				DataCube::Apply(op, raw_cube, value_b, res_cube);
+				result.SetValue(i, res_cube.ToBlob());
 			} else {
-				result.SetValue(i, DataCube::EMPTY_CUBE().ToBlob());
+				DataCube::Apply(op, arg_cube, value_b, res_cube);
+				result.SetValue(i, res_cube.ToBlob());
 			}
 		}
 		RestoreConstantIfNeeded(args, result);
@@ -196,6 +321,7 @@ struct RT_Math {
 
 void RasterMathFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
+	RT_ChangeType::Register(loader);
 	RT_Math::Register(loader);
 }
 

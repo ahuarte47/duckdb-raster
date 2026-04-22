@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+0.5.1
+++++++++++++++++++
+
+- New `RT_Cube2Type<TYPE>` functions to transform a datacube column to another data type.
+
 0.5.0
 ++++++++++++++++++
 

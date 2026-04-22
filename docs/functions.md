@@ -15,6 +15,7 @@
 | Function | Summary |
 | --- | --- |
 | [`RT_Cube2Array`](#rt_cube2array) | Transforms the data of the datacube columns into an array of a numeric data type. |
+| [`RT_Cube2Type`](#rt_cube2type) | Transforms a datacube column to another data type. |
 | [`RT_Array2Cube`](#rt_array2cube) | Transforms an array of numeric values into a datacube column. |
 | [`RT_CubeUnaryOp`](#rt_cubeunaryop) | Applies an unary operation to the values in the datacube element-wise. |
 | [`RT_CubeBinaryOp`](#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
@@ -320,6 +321,58 @@ case the function does not filter out NoData values from the resulting array:
 ```sql
 SELECT
 	databand_1::DOUBLE[] AS r_array,
+FROM
+	RT_Read('path/to/raster/file.tif')
+;
+```
+
+----
+
+### RT_Cube2Type
+
+Transforms a datacube column to another data type.
+
+This function allows you to transform the data type of a datacube column to another data type, for example,
+to convert a datacube with `INT16` values into a datacube with `FLOAT` values.
+
+All algebraic operations on the datacube columns return a datacube with `DOUBLE` data type, so you can use
+this function to cast the results of these operations back to the original data type of the raster file,
+or for example, to write the results into a new raster file with the desired data type.
+
+Function accepts the following parameters:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `blob` | BLOB | The column of the data band to transform. |
+
+Extension provides a different function for each numeric data type:
+
+| Function | Description |
+| -------- | ----------- |
+| `RT_Cube2TypeUInt8` | Transforms a datacube column into a datacube with UINT8 values |
+| `RT_Cube2TypeInt8` | Transforms a datacube column into a datacube with INT8 values |
+| `RT_Cube2TypeUInt16` | Transforms a datacube column into a datacube with UINT16 values |
+| `RT_Cube2TypeInt16` | Transforms a datacube column into a datacube with INT16 values |
+| `RT_Cube2TypeUInt32` | Transforms a datacube column into a datacube with UINT32 values |
+| `RT_Cube2TypeInt32` | Transforms a datacube column into a datacube with INT32 values |
+| `RT_Cube2TypeUInt64` | Transforms a datacube column into a datacube with UINT64 values |
+| `RT_Cube2TypeInt64` | Transforms a datacube column into a datacube with INT64 values |
+| `RT_Cube2TypeFloat` | Transforms a datacube column into a datacube with FLOAT values |
+| `RT_Cube2TypeDouble` | Transforms a datacube column into a datacube with DOUBLE values |
+
+#### Signature
+
+```sql
+RT_Cube2Type<data_type> (databand DATACUBE)
+```
+
+#### Examples
+
+```sql
+SELECT
+	RT_Cube2TypeFloat(databand_1 / 1000) AS r_float,
+	RT_Cube2TypeFloat(databand_2 / 1000) AS g_float,
+	RT_Cube2TypeFloat(databand_3 / 1000) AS b_float
 FROM
 	RT_Read('path/to/raster/file.tif')
 ;

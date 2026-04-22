@@ -44,7 +44,8 @@ struct RT_Cube2Array {
 
 			arg_cube.LoadBlob(blob);
 
-			if (arg_cube.GetHeader().data_format != DataFormat::RAW) {
+			const DataHeader header = arg_cube.GetHeader();
+			if (header.data_format != DataFormat::RAW) {
 				arg_cube.ChangeFormat(DataFormat::RAW, raw_cube);
 				result.SetValue(i, raw_cube.ToArray(type, filter_nodata));
 			} else {

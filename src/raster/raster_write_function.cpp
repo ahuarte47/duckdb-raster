@@ -296,13 +296,15 @@ struct RT_Write {
 				const auto &band_value = input.data[band_idx].GetValue(row_idx);
 
 				DataCube &data_cube = data_cubes[cube_idx++];
+				data_cube.LoadBlob(band_value);
 
-				if (data_cube.LoadBlob(band_value) > 0) {
-					DataHeader tile_header = data_cube.GetHeader();
+				if (data_cube.GetCubeSize() > 0) {
+					const DataHeader header_i = data_cube.GetHeader();
+					const GDALDataType data_type_i = RasterUtils::DataTypeToGdalType(header_i.data_type);
+					const int x_size_i = header_i.cols;
+					const int y_size_i = header_i.rows;
+
 					// Process the data band
-					GDALDataType data_type_i = RasterUtils::DataTypeToGdalType(tile_header.data_type);
-					int x_size_i = tile_header.cols;
-					int y_size_i = tile_header.rows;
 
 					if (data_type == GDT_Unknown) {
 						data_type = data_type_i;
@@ -317,7 +319,7 @@ struct RT_Write {
 						global_state.input_tiles.clear();
 						throw std::runtime_error("Inconsistent tile sizes in input data bands");
 					}
-					n_bands += tile_header.bands;
+					n_bands += header_i.bands;
 
 				} else {
 					// Empty data band
@@ -349,7 +351,7 @@ struct RT_Write {
 
 			for (DataCube &data_cube : data_cubes) {
 				data_ptr_t data_ptr = data_cube.GetBuffer().GetData() + sizeof(DataHeader);
-				DataHeader header = data_cube.GetHeader();
+				const DataHeader &header = data_cube.GetHeader();
 
 				for (int i = 0; i < header.bands; i++) {
 					GDALRasterBand *band = dataset->GetRasterBand(b);

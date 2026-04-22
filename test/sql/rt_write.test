@@ -57,3 +57,36 @@ FROM
 ;
 ----
 1
+
+query I
+COPY (
+    SELECT
+        geometry,
+        RT_Cube2TypeUInt8((databand_1 * 1000.0) / 1000.0) AS r,
+        RT_Cube2TypeUInt8((databand_2 * 1000.0) / 1000.0) AS g,
+        RT_Cube2TypeUInt8((databand_3 * 1000.0) / 1000.0) AS b
+    FROM
+        RT_Read('./test/data/overlay-sample.tiff')
+)
+TO '__TEST_DIR__/mathtoraster.png'
+WITH (
+    FORMAT RASTER,
+    DRIVER 'PNG',
+    CREATION_OPTIONS ('COMPRESS=LZW'),
+    RESAMPLING 'nearest',
+    ENVELOPE [545539.750, 4724420.250, 545699.750, 4724510.250],
+    SRS 'EPSG:25830',
+    GEOMETRY_COLUMN 'geometry',
+    DATABAND_COLUMNS ['b', 'g', 'r']
+);
+----
+23
+
+query I
+SELECT
+    COUNT(id)
+FROM
+    RT_Read('__TEST_DIR__/mathtoraster.png')
+;
+----
+1
