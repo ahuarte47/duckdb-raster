@@ -47,11 +47,11 @@ After loading the extension, you can read and write raster files using SQL.
 
 | Function | Summary |
 | --- | --- |
+| [`RT_Array2Cube`](docs/functions.md#rt_array2cube) | Transforms an array of numeric values into a datacube column. |
 | [`RT_Cube2Array`](docs/functions.md#rt_cube2array) | Transforms a datacube column into an array of a numeric data type. |
 | [`RT_Cube2Type`](docs/functions.md#rt_cube2type) | Transforms a datacube column into another data type. |
-| [`RT_Array2Cube`](docs/functions.md#rt_array2cube) | Transforms an array of numeric values into a datacube column. |
-| [`RT_CubeUnaryOp`](docs/functions.md#rt_cubeunaryop) | Applies a unary operation to the values in the datacube element-wise. |
-| [`RT_CubeBinaryOp`](docs/functions.md#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
+| [`RT_Cube<BinaryOp>`](docs/functions.md#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
+| [`RT_Cube<UnaryOp>`](docs/functions.md#rt_cubeunaryop) | Applies a unary operation to the values in the datacube element-wise. |
 
 The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported.
 

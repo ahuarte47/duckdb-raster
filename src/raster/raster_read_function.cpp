@@ -80,7 +80,7 @@ struct RT_Read {
 	struct BindData final : TableFunctionData {
 		string file_name;
 		named_parameter_map_t parameters;
-		DataFormat::Value data_format = DataFormat::RAW;
+		DataFormat::Value data_format = DataFormat::Value::RAW;
 		bool skip_empty_tiles = true;
 		bool make_datacube = false;
 
@@ -115,7 +115,7 @@ struct RT_Read {
 		const auto file_path = input.inputs[0].GetValue<string>();
 		const auto &params = input.named_parameters;
 
-		DataFormat::Value data_format = DataFormat::RAW;
+		DataFormat::Value data_format = DataFormat::Value::RAW;
 		if (params.find("data_format") != params.end()) {
 			data_format = DataFormat::FromString(params.at("data_format").GetValue<string>());
 		}
@@ -518,7 +518,7 @@ struct RT_Read {
 	//! Fill the output chunk with data for the specified tile coordinates.
 	static bool FillOutput(const BindData &bind_data, const idx_t &row_id, const idx_t &row_index, const int &level,
 	                       const int &tile_x, const int &tile_y, const FilterContext &filter_context,
-	                       DataCube &raw_cube, DataCube &out_cube, DataChunk &output) {
+	                       DataCube &data_cube, DataChunk &output) {
 		GDALDataset *dataset = bind_data.dataset.get();
 
 		const auto &metadata_ds = bind_data.metadata_ds;
@@ -636,23 +636,23 @@ struct RT_Read {
 
 					// Write the header of the data band[s].
 
-					DataHeader header = {DataFormat::RAW,
+					DataHeader header = {DataFormat::Value::RAW,
 					                     RasterUtils::GdalTypeToDataType(data_type),
 					                     make_datacube ? num_bands : 1,
 					                     size_x,
 					                     size_y,
 					                     nodata_value};
 
-					raw_cube.SetHeader(header, true);
-					MemoryStream &raw_buffer = raw_cube.GetBuffer();
+					data_cube.SetHeader(header, true);
+					MemoryStream &data_buffer = data_cube.GetBuffer();
 
 					// For datacube, return one unique N-dimensional column with all bands interleaved,
 					// Otherwise each band is returned as a separate column.
-					data_ptr_t raw_ptr = raw_buffer.GetData() + sizeof(DataHeader);
+					data_ptr_t data_ptr = data_buffer.GetData() + sizeof(DataHeader);
 					CPLErr read_err = CE_None;
 					if (make_datacube) {
 						// Read the data of all bands...
-						read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, raw_ptr, size_x,
+						read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_ptr, size_x,
 						                             size_y, data_type, num_bands, nullptr, 0, 0, 0, nullptr);
 
 					} else {
@@ -660,7 +660,7 @@ struct RT_Read {
 						GDALRasterBand *band = dataset->GetRasterBand(band_index + 1);
 
 						// Read the data of the band...
-						read_err = band->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, raw_ptr, size_x, size_y,
+						read_err = band->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_ptr, size_x, size_y,
 						                          data_type, 0, 0, nullptr);
 					}
 
@@ -672,15 +672,13 @@ struct RT_Read {
 						continue;
 					}
 
-					raw_buffer.SetPosition(raw_cube.GetExpectedSizeBytes());
+					data_buffer.SetPosition(data_cube.GetExpectedSizeBytes());
 
 					// Write the tile data as a BLOB column.
-					if (data_format != DataFormat::RAW) {
-						raw_cube.ChangeFormat(data_format, out_cube);
-						output.data[col_idx].SetValue(row_index, out_cube.ToBlob());
-					} else {
-						output.data[col_idx].SetValue(row_index, raw_cube.ToBlob());
+					if (data_format != DataFormat::Value::RAW) {
+						data_cube.ChangeFormat(data_format);
 					}
+					output.data[col_idx].SetValue(row_index, data_cube.ToBlob());
 				} else {
 					throw IOException("Invalid column index: %ld", dim_index);
 				}
@@ -722,16 +720,14 @@ struct RT_Read {
 
 		// Loop over the tiles and fill the output chunk, it reuses DataCubes for avoiding repeated memory allocations.
 
-		DataCube raw_cube(Allocator::Get(context));
-		DataCube out_cube(Allocator::Get(context));
+		DataCube data_cube(Allocator::Get(context));
 
 		for (int tile_y = start_ty; tile_y < tiles_y && output_size < vector_size; ++tile_y) {
 			const int first_tx = (tile_y == start_ty) ? start_tx : 0;
 
 			for (int tile_x = first_tx; tile_x < tiles_x && output_size < vector_size; ++tile_x) {
 				// Process one tile.
-				if (FillOutput(bind_data, row_id, output_size, 0, tile_x, tile_y, filter_context, raw_cube, out_cube,
-				               output)) {
+				if (FillOutput(bind_data, row_id, output_size, 0, tile_x, tile_y, filter_context, data_cube, output)) {
 					output_size++;
 				}
 				row_id++;

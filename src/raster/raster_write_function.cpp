@@ -268,7 +268,7 @@ struct RT_Write {
 
 		for (idx_t band_idx : bind_data.databand_cols) {
 			input.data[band_idx].Flatten(input.size());
-			data_cubes.emplace_back(Allocator::Get(context.client));
+			data_cubes.emplace_back(DataCube(Allocator::Get(context.client)));
 		}
 
 		for (idx_t row_idx = 0; row_idx < input.size(); row_idx++) {
@@ -298,7 +298,7 @@ struct RT_Write {
 				DataCube &data_cube = data_cubes[cube_idx++];
 				data_cube.LoadBlob(band_value);
 
-				if (data_cube.GetCubeSize() > 0) {
+				if (!data_cube.IsNullOrEmpty()) {
 					const DataHeader header_i = data_cube.GetHeader();
 					const GDALDataType data_type_i = RasterUtils::DataTypeToGdalType(header_i.data_type);
 					const int x_size_i = header_i.cols;
@@ -350,6 +350,8 @@ struct RT_Write {
 			int b = 1;
 
 			for (DataCube &data_cube : data_cubes) {
+				data_cube.EnsureRaw();
+
 				data_ptr_t data_ptr = data_cube.GetBuffer().GetData() + sizeof(DataHeader);
 				const DataHeader &header = data_cube.GetHeader();
 

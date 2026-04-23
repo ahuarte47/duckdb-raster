@@ -3,16 +3,21 @@
 
 namespace duckdb {
 
+//======================================================================================================================
+// DataCube
+//======================================================================================================================
+
 DataCube::DataCube() : DataCube::DataCube(Allocator::DefaultAllocator()) {
 }
 
-DataCube::DataCube(Allocator &allocator) : allocator(allocator), header(), buffer(allocator) {
+DataCube::DataCube(Allocator &allocator)
+    : allocator(allocator), header(), data_buffer(allocator), temp_buffer(allocator) {
 }
 
 DataCube DataCube::EMPTY_CUBE(DataType::Value data_type) {
 	DataCube empty_cube;
 	empty_cube.header.data_type = data_type;
-	empty_cube.SetHeader(empty_cube.GetHeader(), true);
+	empty_cube.SetHeader(empty_cube.GetHeader(), false);
 	return empty_cube;
 }
 
@@ -23,20 +28,23 @@ DataHeader DataCube::GetHeader() const {
 void DataCube::SetHeader(const DataHeader &header, bool init_buffer) {
 	this->header = header;
 
-	// Clear the buffer and write the header to it.
+	// Reset the buffer and write the header to it.
 	if (init_buffer) {
-		buffer.Rewind();
-		buffer.GrowCapacity(GetExpectedSizeBytes());
-		buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
+		data_buffer.Rewind();
+		data_buffer.GrowCapacity(GetExpectedSizeBytes());
+		data_buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
+	} else {
+		data_buffer.Rewind();
+		data_buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
 	}
 }
 
 const MemoryStream &DataCube::GetBuffer() const {
-	return buffer;
+	return data_buffer;
 }
 
 MemoryStream &DataCube::GetBuffer() {
-	return buffer;
+	return data_buffer;
 }
 
 int64_t DataCube::GetCubeSize() const {
@@ -75,28 +83,21 @@ void DataCube::LoadBlob(const Value &blob) {
 
 	header = blob_header;
 
-	buffer.Rewind();
-	buffer.GrowCapacity(blob_size);
-	buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
+	data_buffer.Rewind();
+	data_buffer.GrowCapacity(blob_size);
+	data_buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
 
 	const idx_t cube_size = GetCubeSize();
 	if (cube_size > 0) {
 		const idx_t data_size = blob_size - sizeof(DataHeader);
-		buffer.WriteData(blob_data + sizeof(DataHeader), data_size);
+		data_buffer.WriteData(blob_data + sizeof(DataHeader), data_size);
 	}
 }
 
 Value DataCube::ToBlob() const {
-	switch (header.data_format) {
-	case DataFormat::RAW: {
-		// Nothing to do for raw data, the buffer already contains the header and the raw tile data.
-		Value blob = Value::BLOB(buffer.GetData(), GetExpectedSizeBytes());
-		blob.Reinterpret(RasterTypes::DATACUBE());
-		return blob;
-	}
-	default:
-		throw std::runtime_error("Unsupported data format: " + std::to_string(header.data_format));
-	}
+	Value blob = Value::BLOB(data_buffer.GetData(), data_buffer.GetPosition());
+	blob.Reinterpret(RasterTypes::DATACUBE());
+	return blob;
 }
 
 void DataCube::LoadArray(const Value &in_array, const DataHeader &in_header) {
@@ -120,11 +121,10 @@ void DataCube::LoadArray(const Value &in_array, const DataHeader &in_header) {
 	// Set the header and the buffer of the data cube from the ARRAY content.
 
 	header = in_header;
-	header.data_format = DataFormat::RAW;
+	header.data_format = DataFormat::Value::RAW;
 
-	buffer.Rewind();
-	buffer.GrowCapacity(GetExpectedSizeBytes());
-	buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
+	data_buffer.Rewind();
+	data_buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
 
 	if (children.empty()) {
 		return;
@@ -139,50 +139,48 @@ void DataCube::LoadArray(const Value &in_array, const DataHeader &in_header) {
 		for (const auto &value : children) {
 			raw.push_back(make_value(value));
 		}
-		buffer.WriteData(const_data_ptr_cast(raw.data()), raw.size() * sizeof(T));
+		data_buffer.WriteData(const_data_ptr_cast(raw.data()), raw.size() * sizeof(T));
 	};
 
 	switch (header.data_type) {
-	case DataType::UINT8:
+	case DataType::Value::UINT8:
 		write_values([](const Value &v) { return v.GetValue<uint8_t>(); });
 		break;
-	case DataType::INT8:
+	case DataType::Value::INT8:
 		write_values([](const Value &v) { return v.GetValue<int8_t>(); });
 		break;
-	case DataType::UINT16:
+	case DataType::Value::UINT16:
 		write_values([](const Value &v) { return v.GetValue<uint16_t>(); });
 		break;
-	case DataType::INT16:
+	case DataType::Value::INT16:
 		write_values([](const Value &v) { return v.GetValue<int16_t>(); });
 		break;
-	case DataType::UINT32:
+	case DataType::Value::UINT32:
 		write_values([](const Value &v) { return v.GetValue<uint32_t>(); });
 		break;
-	case DataType::INT32:
+	case DataType::Value::INT32:
 		write_values([](const Value &v) { return v.GetValue<int32_t>(); });
 		break;
-	case DataType::UINT64:
+	case DataType::Value::UINT64:
 		write_values([](const Value &v) { return v.GetValue<uint64_t>(); });
 		break;
-	case DataType::INT64:
+	case DataType::Value::INT64:
 		write_values([](const Value &v) { return v.GetValue<int64_t>(); });
 		break;
-	case DataType::FLOAT:
+	case DataType::Value::FLOAT:
 		write_values([](const Value &v) { return v.GetValue<float>(); });
 		break;
-	case DataType::DOUBLE:
+	case DataType::Value::DOUBLE:
 		write_values([](const Value &v) { return v.GetValue<double>(); });
 		break;
 	default:
 		throw std::runtime_error("Unsupported DataType: " + DataType::ToString(header.data_type));
 	}
+
+	ChangeType(in_header.data_type);
 }
 
 Value DataCube::ToArray(const LogicalType &output_type, bool filter_nodata) {
-	if (header.data_format != DataFormat::RAW) {
-		throw std::runtime_error("Converting to array is only supported for RAW data format");
-	}
-
 	const DataType::Value data_type = header.data_type;
 	const double no_data = header.no_data;
 	vector<Value> data_values;
@@ -191,12 +189,14 @@ Value DataCube::ToArray(const LogicalType &output_type, bool filter_nodata) {
 	if (cube_size > 0) {
 		data_values.reserve(cube_size);
 
+		EnsureRaw();
+
 		auto read_values = [&](auto read_raw, auto make_value) {
 			if (filter_nodata) {
 				for (idx_t i = 0; i < cube_size; i++) {
 					const auto raw_value = read_raw();
 
-					if (!DataCube::IsNoDataValue(static_cast<double>(raw_value), no_data)) {
+					if (!CubeCellValue::IsNoDataValue(static_cast<double>(raw_value), no_data)) {
 						data_values.push_back(make_value(raw_value));
 					}
 				}
@@ -208,47 +208,47 @@ Value DataCube::ToArray(const LogicalType &output_type, bool filter_nodata) {
 			}
 		};
 
-		const auto old_position = buffer.GetPosition();
-		buffer.SetPosition(sizeof(DataHeader));
+		const auto old_position = data_buffer.GetPosition();
+		data_buffer.SetPosition(sizeof(DataHeader));
 
 		switch (data_type) {
-		case DataType::UINT8:
-			read_values([&] { return buffer.Read<uint8_t>(); }, [](auto v) { return Value::UTINYINT(v); });
+		case DataType::Value::UINT8:
+			read_values([&] { return data_buffer.Read<uint8_t>(); }, [](auto v) { return Value::UTINYINT(v); });
 			break;
-		case DataType::INT8:
-			read_values([&] { return buffer.Read<int8_t>(); }, [](auto v) { return Value::TINYINT(v); });
+		case DataType::Value::INT8:
+			read_values([&] { return data_buffer.Read<int8_t>(); }, [](auto v) { return Value::TINYINT(v); });
 			break;
-		case DataType::UINT16:
-			read_values([&] { return buffer.Read<uint16_t>(); }, [](auto v) { return Value::USMALLINT(v); });
+		case DataType::Value::UINT16:
+			read_values([&] { return data_buffer.Read<uint16_t>(); }, [](auto v) { return Value::USMALLINT(v); });
 			break;
-		case DataType::INT16:
-			read_values([&] { return buffer.Read<int16_t>(); }, [](auto v) { return Value::SMALLINT(v); });
+		case DataType::Value::INT16:
+			read_values([&] { return data_buffer.Read<int16_t>(); }, [](auto v) { return Value::SMALLINT(v); });
 			break;
-		case DataType::UINT32:
-			read_values([&] { return buffer.Read<uint32_t>(); }, [](auto v) { return Value::UINTEGER(v); });
+		case DataType::Value::UINT32:
+			read_values([&] { return data_buffer.Read<uint32_t>(); }, [](auto v) { return Value::UINTEGER(v); });
 			break;
-		case DataType::INT32:
-			read_values([&] { return buffer.Read<int32_t>(); }, [](auto v) { return Value::INTEGER(v); });
+		case DataType::Value::INT32:
+			read_values([&] { return data_buffer.Read<int32_t>(); }, [](auto v) { return Value::INTEGER(v); });
 			break;
-		case DataType::UINT64:
-			read_values([&] { return buffer.Read<uint64_t>(); }, [](auto v) { return Value::UBIGINT(v); });
+		case DataType::Value::UINT64:
+			read_values([&] { return data_buffer.Read<uint64_t>(); }, [](auto v) { return Value::UBIGINT(v); });
 			break;
-		case DataType::INT64:
-			read_values([&] { return buffer.Read<int64_t>(); }, [](auto v) { return Value::BIGINT(v); });
+		case DataType::Value::INT64:
+			read_values([&] { return data_buffer.Read<int64_t>(); }, [](auto v) { return Value::BIGINT(v); });
 			break;
-		case DataType::FLOAT:
-			read_values([&] { return buffer.Read<float>(); }, [](auto v) { return Value::FLOAT(v); });
+		case DataType::Value::FLOAT:
+			read_values([&] { return data_buffer.Read<float>(); }, [](auto v) { return Value::FLOAT(v); });
 			break;
-		case DataType::DOUBLE:
-			read_values([&] { return buffer.Read<double>(); }, [](auto v) { return Value::DOUBLE(v); });
+		case DataType::Value::DOUBLE:
+			read_values([&] { return data_buffer.Read<double>(); }, [](auto v) { return Value::DOUBLE(v); });
 			break;
 		default: {
-			buffer.SetPosition(old_position);
+			data_buffer.SetPosition(old_position);
 			throw std::runtime_error("Unsupported DataType: " + DataType::ToString(data_type));
 		}
 		}
 
-		buffer.SetPosition(old_position);
+		data_buffer.SetPosition(old_position);
 	}
 
 	// Return a RT_ARRAY struct with the metadata and the data of the tile.
@@ -265,10 +265,7 @@ Value DataCube::ToArray(const LogicalType &output_type, bool filter_nodata) {
 }
 
 template <typename T>
-T DataCube::GetValue(uint32_t band, uint32_t col, uint32_t row) const {
-	if (header.data_format != DataFormat::RAW) {
-		throw std::runtime_error("Getting values is only supported for RAW data format");
-	}
+T DataCube::GetValue(uint32_t band, uint32_t col, uint32_t row) {
 	if (band >= header.bands) {
 		throw std::out_of_range("Band index is out of bounds");
 	}
@@ -286,191 +283,193 @@ T DataCube::GetValue(uint32_t band, uint32_t col, uint32_t row) const {
 }
 
 template <typename T>
-T DataCube::GetValue(idx_t index) const {
-	if (header.data_format != DataFormat::RAW) {
-		throw std::runtime_error("Getting values is only supported for RAW data format");
-	}
+T DataCube::GetValue(idx_t index) {
 	if (index >= GetCubeSize()) {
 		throw std::out_of_range("Index is out of bounds");
 	}
 
+	EnsureRaw();
+
 	const idx_t byte_offset = sizeof(DataHeader) + (index * DataType::GetSizeBytes(header.data_type));
-	const auto value_ptr = buffer.GetData() + byte_offset;
+	const auto value_ptr = data_buffer.GetData() + byte_offset;
 
 	return *reinterpret_cast<const T *>(value_ptr);
 }
 
-bool DataCube::IsNoDataValue(double value, double no_data) {
-	return std::isnan(no_data) ? std::isnan(value) : value == no_data;
-}
+bool DataCube::IsNullOrEmpty() {
+	const idx_t cube_size = GetCubeSize();
 
-bool DataCube::IsValidValue(double value, double no_data) {
-	return !std::isnan(value) && !std::isinf(value) && value != no_data;
+	if (cube_size == 0) {
+		return true;
+	}
+
+	EnsureRaw();
+
+	const data_ptr_t data_ptr = data_buffer.GetData() + sizeof(DataHeader);
+
+	for (idx_t i = 0; i < cube_size; i++) {
+		const double value = ReadValueAs<double>(header.data_type, data_ptr, i);
+
+		if (!CubeCellValue::IsNoDataValue(value, header.no_data)) {
+			return false;
+		}
+	}
+	return true;
 }
 
 template <typename T>
 T DataCube::ReadValueAs(DataType::Value data_type, const data_ptr_t data_ptr, idx_t value_index) {
 	switch (data_type) {
-	case DataType::UINT8:
+	case DataType::Value::UINT8:
 		return static_cast<T>(*reinterpret_cast<const uint8_t *>(data_ptr + value_index * sizeof(uint8_t)));
-	case DataType::INT8:
+	case DataType::Value::INT8:
 		return static_cast<T>(*reinterpret_cast<const int8_t *>(data_ptr + value_index * sizeof(int8_t)));
-	case DataType::UINT16:
+	case DataType::Value::UINT16:
 		return static_cast<T>(*reinterpret_cast<const uint16_t *>(data_ptr + value_index * sizeof(uint16_t)));
-	case DataType::INT16:
+	case DataType::Value::INT16:
 		return static_cast<T>(*reinterpret_cast<const int16_t *>(data_ptr + value_index * sizeof(int16_t)));
-	case DataType::UINT32:
+	case DataType::Value::UINT32:
 		return static_cast<T>(*reinterpret_cast<const uint32_t *>(data_ptr + value_index * sizeof(uint32_t)));
-	case DataType::INT32:
+	case DataType::Value::INT32:
 		return static_cast<T>(*reinterpret_cast<const int32_t *>(data_ptr + value_index * sizeof(int32_t)));
-	case DataType::UINT64:
+	case DataType::Value::UINT64:
 		return static_cast<T>(*reinterpret_cast<const uint64_t *>(data_ptr + value_index * sizeof(uint64_t)));
-	case DataType::INT64:
+	case DataType::Value::INT64:
 		return static_cast<T>(*reinterpret_cast<const int64_t *>(data_ptr + value_index * sizeof(int64_t)));
-	case DataType::FLOAT:
+	case DataType::Value::FLOAT:
 		return static_cast<T>(*reinterpret_cast<const float *>(data_ptr + value_index * sizeof(float)));
-	case DataType::DOUBLE:
+	case DataType::Value::DOUBLE:
 		return static_cast<T>(*reinterpret_cast<const double *>(data_ptr + value_index * sizeof(double)));
 	default:
 		throw std::runtime_error("Unsupported DataType: " + DataType::ToString(data_type));
 	}
 }
 
-void DataCube::ChangeFormat(const DataFormat::Value &new_format, DataCube &r) const {
+void DataCube::ChangeFormat(const DataFormat::Value &new_format) {
 	if (header.data_format == new_format) {
-		r.header = header;
-		r.buffer.Rewind();
-		r.buffer.GrowCapacity(buffer.GetCapacity());
-		r.buffer.WriteData(buffer.GetData(), buffer.GetCapacity());
-		r.buffer.SetPosition(buffer.GetPosition());
 		return;
 	}
 	throw std::runtime_error("Data format conversion is not implemented yet");
 }
 
-void DataCube::ChangeType(const DataType::Value &new_data_type, DataCube &r) const {
-	if (header.data_format != DataFormat::RAW) {
-		throw std::runtime_error("Data type conversion is only supported for RAW data format");
-	}
+void DataCube::ChangeType(const DataType::Value &new_data_type) {
 	if (header.data_type == new_data_type) {
-		r.header = header;
-		r.buffer.Rewind();
-		r.buffer.GrowCapacity(buffer.GetCapacity());
-		r.buffer.WriteData(buffer.GetData(), buffer.GetCapacity());
-		r.buffer.SetPosition(buffer.GetPosition());
 		return;
 	}
 
-	r.header = header;
-	r.header.data_format = DataFormat::RAW;
-	r.header.data_type = new_data_type;
-	r.buffer.Rewind();
-	r.buffer.GrowCapacity(r.GetExpectedSizeBytes());
-	r.buffer.WriteData(const_data_ptr_cast(&r.header), sizeof(DataHeader));
-
-	const data_ptr_t source_data_ptr = buffer.GetData() + sizeof(DataHeader);
-	data_ptr_t r_data_ptr = r.buffer.GetData() + sizeof(DataHeader);
 	const idx_t cube_size = GetCubeSize();
-	const DataType::Value src_type = header.data_type;
+
+	DataHeader temp_header = header;
+	temp_header.data_type = new_data_type;
+	temp_header.data_format = DataFormat::Value::RAW;
+	temp_buffer.Rewind();
+	temp_buffer.GrowCapacity(cube_size * DataType::GetSizeBytes(new_data_type) + sizeof(DataHeader));
+	temp_buffer.WriteData(const_data_ptr_cast(&temp_header), sizeof(DataHeader));
+
+	const data_ptr_t data_ptr = data_buffer.GetData() + sizeof(DataHeader);
+	data_ptr_t temp_ptr = temp_buffer.GetData() + sizeof(DataHeader);
 
 	auto write_as = [&](auto *typed_ptr) {
 		using T = std::remove_pointer_t<decltype(typed_ptr)>;
 		constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
 		constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+		const DataType::Value src_type = header.data_type;
 
 		for (idx_t i = 0; i < cube_size; i++) {
-			const double value = ReadValueAs<double>(src_type, source_data_ptr, i);
+			const double value = DataCube::ReadValueAs<double>(src_type, data_ptr, i);
 			typed_ptr[i] = static_cast<T>(ClampValue<double>(value, t_min, t_max));
 		}
 	};
 
 	switch (new_data_type) {
-	case DataType::UINT8:
-		write_as(reinterpret_cast<uint8_t *>(r_data_ptr));
+	case DataType::Value::UINT8:
+		write_as(reinterpret_cast<uint8_t *>(temp_ptr));
 		break;
-	case DataType::INT8:
-		write_as(reinterpret_cast<int8_t *>(r_data_ptr));
+	case DataType::Value::INT8:
+		write_as(reinterpret_cast<int8_t *>(temp_ptr));
 		break;
-	case DataType::UINT16:
-		write_as(reinterpret_cast<uint16_t *>(r_data_ptr));
+	case DataType::Value::UINT16:
+		write_as(reinterpret_cast<uint16_t *>(temp_ptr));
 		break;
-	case DataType::INT16:
-		write_as(reinterpret_cast<int16_t *>(r_data_ptr));
+	case DataType::Value::INT16:
+		write_as(reinterpret_cast<int16_t *>(temp_ptr));
 		break;
-	case DataType::UINT32:
-		write_as(reinterpret_cast<uint32_t *>(r_data_ptr));
+	case DataType::Value::UINT32:
+		write_as(reinterpret_cast<uint32_t *>(temp_ptr));
 		break;
-	case DataType::INT32:
-		write_as(reinterpret_cast<int32_t *>(r_data_ptr));
+	case DataType::Value::INT32:
+		write_as(reinterpret_cast<int32_t *>(temp_ptr));
 		break;
-	case DataType::UINT64:
-		write_as(reinterpret_cast<uint64_t *>(r_data_ptr));
+	case DataType::Value::UINT64:
+		write_as(reinterpret_cast<uint64_t *>(temp_ptr));
 		break;
-	case DataType::INT64:
-		write_as(reinterpret_cast<int64_t *>(r_data_ptr));
+	case DataType::Value::INT64:
+		write_as(reinterpret_cast<int64_t *>(temp_ptr));
 		break;
-	case DataType::FLOAT:
-		write_as(reinterpret_cast<float *>(r_data_ptr));
+	case DataType::Value::FLOAT:
+		write_as(reinterpret_cast<float *>(temp_ptr));
 		break;
-	case DataType::DOUBLE:
-		write_as(reinterpret_cast<double *>(r_data_ptr));
+	case DataType::Value::DOUBLE:
+		write_as(reinterpret_cast<double *>(temp_ptr));
 		break;
 	default:
 		throw std::runtime_error("Unsupported DataType: " + DataType::ToString(new_data_type));
 	}
+
+	header = temp_header;
+	data_buffer.Rewind();
+	data_buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
+	data_buffer.WriteData(temp_ptr, cube_size * DataType::GetSizeBytes(new_data_type));
+	temp_buffer.Rewind();
 }
 
-void DataCube::Apply(CubeUnaryOp op, const DataCube &a, DataCube &r) {
-	if (a.header.data_format != DataFormat::RAW) {
-		throw std::runtime_error("Applying unary operations is only supported for RAW data format");
-	}
+void DataCube::EnsureRaw() {
+	ChangeFormat(DataFormat::Value::RAW);
+}
 
-	DataHeader r_header = a.header;
-	r_header.data_type = DataType::DOUBLE;
-	r.SetHeader(r_header, true);
-
-	data_ptr_t a_data_ptr = a.buffer.GetData() + sizeof(DataHeader);
-	double *r_data_ptr = reinterpret_cast<double *>(r.buffer.GetData() + sizeof(DataHeader));
-	const double a_no_data = a.header.no_data;
-	const DataType::Value a_data_type = a.header.data_type;
+void DataCube::Apply(const CubeUnaryCellFunc &func, DataCube &a, DataCube &r) {
 	const idx_t cube_size = a.GetCubeSize();
 
-	auto apply_op = [op](double v) -> double {
-		switch (op) {
-		case CubeUnaryOp::NEGATE:
-			return -v;
-		case CubeUnaryOp::ABSOLUTE:
-			return std::abs(v);
-		case CubeUnaryOp::SQUARE_ROOT:
-			return std::sqrt(v);
-		case CubeUnaryOp::LOGARITHM:
-			return std::log(v);
-		case CubeUnaryOp::EXPONENTIAL:
-			return std::exp(v);
-		default:
-			throw std::runtime_error("Unsupported operation: " + std::to_string(static_cast<uint8_t>(op)));
-		}
-	};
+	// If the cube is empty, just copy the header and return.
+	if (cube_size == 0) {
+		r.SetHeader(a.GetHeader(), false);
+		return;
+	}
+
+	a.EnsureRaw();
+	DataHeader r_header = a.header;
+	r_header.data_type = DataType::Value::DOUBLE;
+	r.SetHeader(r_header, true);
+
+	data_ptr_t a_data_ptr = a.data_buffer.GetData() + sizeof(DataHeader);
+	double *r_data_ptr = reinterpret_cast<double *>(r.data_buffer.GetData() + sizeof(DataHeader));
+
+	const DataType::Value a_data_type = a.header.data_type;
+	CubeCellValue a_cell_val = {0, 0.0, a.header.no_data};
+	double result = 0.0;
 
 	for (idx_t i = 0; i < cube_size; i++) {
-		const double value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
+		a_cell_val.index = i;
+		a_cell_val.value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
 
-		if (DataCube::IsValidValue(value, a_no_data)) {
-			*r_data_ptr = apply_op(value);
-		} else {
-			*r_data_ptr = value;
+		// Write the result of the cell operation to the result cube.
+		if (func(a_cell_val, result)) {
+			*r_data_ptr = result;
 		}
 		r_data_ptr++;
 	}
+	r.data_buffer.SetPosition(sizeof(DataHeader) + cube_size * sizeof(double));
 }
 
-void DataCube::Apply(CubeBinaryOp op, const DataCube &a, const DataCube &b, DataCube &r) {
-	if (a.header.data_format != DataFormat::RAW) {
-		throw std::runtime_error("Applying binary operations is only supported for RAW data format");
+void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, DataCube &r) {
+	const idx_t cube_size = a.GetCubeSize();
+
+	// If the cube is empty, just copy the header and return.
+	if (cube_size == 0) {
+		r.SetHeader(a.GetHeader(), false);
+		return;
 	}
-	if (b.header.data_format != DataFormat::RAW) {
-		throw std::runtime_error("Applying binary operations is only supported for RAW data format");
-	}
+
 	if (a.header.bands != b.header.bands) {
 		throw std::runtime_error("Input data cubes must have the same number of bands");
 	}
@@ -481,169 +480,150 @@ void DataCube::Apply(CubeBinaryOp op, const DataCube &a, const DataCube &b, Data
 		throw std::runtime_error("Input data cubes must have the same number of rows");
 	}
 
+	a.EnsureRaw();
+	b.EnsureRaw();
 	DataHeader r_header = a.header;
-	r_header.data_type = DataType::DOUBLE;
+	r_header.data_type = DataType::Value::DOUBLE;
 	r.SetHeader(r_header, true);
 
-	data_ptr_t a_data_ptr = a.buffer.GetData() + sizeof(DataHeader);
-	data_ptr_t b_data_ptr = b.buffer.GetData() + sizeof(DataHeader);
-	double *r_data_ptr = reinterpret_cast<double *>(r.buffer.GetData() + sizeof(DataHeader));
-	const double a_no_data = a.header.no_data;
-	const double b_no_data = b.header.no_data;
+	data_ptr_t a_data_ptr = a.data_buffer.GetData() + sizeof(DataHeader);
+	data_ptr_t b_data_ptr = b.data_buffer.GetData() + sizeof(DataHeader);
+	double *r_data_ptr = reinterpret_cast<double *>(r.data_buffer.GetData() + sizeof(DataHeader));
+
 	const DataType::Value a_data_type = a.header.data_type;
 	const DataType::Value b_data_type = b.header.data_type;
-	const idx_t cube_size = a.GetCubeSize();
-
-	auto apply_op = [op](double a, double b) -> double {
-		switch (op) {
-		case CubeBinaryOp::EQUAL:
-			return (a == b) ? 1.0 : 0.0;
-		case CubeBinaryOp::NOT_EQUAL:
-			return (a != b) ? 1.0 : 0.0;
-		case CubeBinaryOp::GREATER:
-			return (a > b) ? 1.0 : 0.0;
-		case CubeBinaryOp::LESS:
-			return (a < b) ? 1.0 : 0.0;
-		case CubeBinaryOp::GREATER_EQUAL:
-			return (a >= b) ? 1.0 : 0.0;
-		case CubeBinaryOp::LESS_EQUAL:
-			return (a <= b) ? 1.0 : 0.0;
-		case CubeBinaryOp::ADD:
-			return a + b;
-		case CubeBinaryOp::SUBTRACT:
-			return a - b;
-		case CubeBinaryOp::MULTIPLY:
-			return a * b;
-		case CubeBinaryOp::DIVIDE:
-			return (b != 0.0) ? a / b : a;
-		case CubeBinaryOp::POW:
-			return std::pow(a, b);
-		case CubeBinaryOp::MOD:
-			return std::fmod(a, b);
-		default:
-			throw std::runtime_error("Unsupported operation: " + std::to_string(static_cast<uint8_t>(op)));
-		}
-	};
+	CubeCellValue a_cell_val = {0, 0.0, a.header.no_data};
+	CubeCellValue b_cell_val = {0, 0.0, b.header.no_data};
+	double result = 0.0;
 
 	for (idx_t i = 0; i < cube_size; i++) {
-		const double a_value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
-		const double b_value = DataCube::ReadValueAs<double>(b_data_type, b_data_ptr, i);
+		a_cell_val.index = i;
+		a_cell_val.value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
+		b_cell_val.index = i;
+		b_cell_val.value = DataCube::ReadValueAs<double>(b_data_type, b_data_ptr, i);
 
-		if (DataCube::IsValidValue(a_value, a_no_data) && DataCube::IsValidValue(b_value, b_no_data)) {
-			*r_data_ptr = apply_op(a_value, b_value);
-		} else {
-			*r_data_ptr = a_value;
+		// Write the result of the cell operation to the result cube.
+		if (func(a_cell_val, b_cell_val, result)) {
+			*r_data_ptr = result;
 		}
 		r_data_ptr++;
 	}
+	r.data_buffer.SetPosition(sizeof(DataHeader) + cube_size * sizeof(double));
 }
 
-void DataCube::Apply(CubeBinaryOp op, const DataCube &a, const double &b, DataCube &r) {
-	if (a.header.data_format != DataFormat::RAW) {
-		throw std::runtime_error("Applying binary operations is only supported for RAW data format");
-	}
-	if (op == CubeBinaryOp::DIVIDE && b == 0) {
-		throw std::runtime_error("Division by zero is not allowed");
+void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &b, DataCube &r) {
+	const idx_t cube_size = a.GetCubeSize();
+
+	// If the cube is empty, just copy the header and return.
+	if (cube_size == 0) {
+		r.SetHeader(a.GetHeader(), false);
+		return;
 	}
 
+	a.EnsureRaw();
 	DataHeader r_header = a.header;
-	r_header.data_type = DataType::DOUBLE;
+	r_header.data_type = DataType::Value::DOUBLE;
 	r.SetHeader(r_header, true);
 
-	data_ptr_t a_data_ptr = a.buffer.GetData() + sizeof(DataHeader);
-	double *r_data_ptr = reinterpret_cast<double *>(r.buffer.GetData() + sizeof(DataHeader));
-	const double a_no_data = a.header.no_data;
-	const DataType::Value a_data_type = a.header.data_type;
-	const idx_t cube_size = a.GetCubeSize();
+	data_ptr_t a_data_ptr = a.data_buffer.GetData() + sizeof(DataHeader);
+	double *r_data_ptr = reinterpret_cast<double *>(r.data_buffer.GetData() + sizeof(DataHeader));
 
-	auto apply_op = [op](double a, double b) -> double {
-		switch (op) {
-		case CubeBinaryOp::EQUAL:
-			return (a == b) ? 1.0 : 0.0;
-		case CubeBinaryOp::NOT_EQUAL:
-			return (a != b) ? 1.0 : 0.0;
-		case CubeBinaryOp::GREATER:
-			return (a > b) ? 1.0 : 0.0;
-		case CubeBinaryOp::LESS:
-			return (a < b) ? 1.0 : 0.0;
-		case CubeBinaryOp::GREATER_EQUAL:
-			return (a >= b) ? 1.0 : 0.0;
-		case CubeBinaryOp::LESS_EQUAL:
-			return (a <= b) ? 1.0 : 0.0;
-		case CubeBinaryOp::ADD:
-			return a + b;
-		case CubeBinaryOp::SUBTRACT:
-			return a - b;
-		case CubeBinaryOp::MULTIPLY:
-			return a * b;
-		case CubeBinaryOp::DIVIDE:
-			return a / b;
-		case CubeBinaryOp::POW:
-			return std::pow(a, b);
-		case CubeBinaryOp::MOD:
-			return std::fmod(a, b);
-		default:
-			throw std::runtime_error("Unsupported operation: " + std::to_string(static_cast<uint8_t>(op)));
-		}
-	};
+	const DataType::Value a_data_type = a.header.data_type;
+	CubeCellValue a_cell_val = {0, 0.0, a.header.no_data};
+	CubeCellValue b_cell_val = {0, b, a.header.no_data};
+	double result = 0.0;
 
 	for (idx_t i = 0; i < cube_size; i++) {
-		const double a_value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
+		a_cell_val.index = i;
+		a_cell_val.value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
+		b_cell_val.index = i;
 
-		if (DataCube::IsValidValue(a_value, a_no_data)) {
-			*r_data_ptr = apply_op(a_value, b);
-		} else {
-			*r_data_ptr = a_value;
+		// Write the result of the cell operation to the result cube.
+		if (func(a_cell_val, b_cell_val, result)) {
+			*r_data_ptr = result;
 		}
 		r_data_ptr++;
 	}
+	r.data_buffer.SetPosition(sizeof(DataHeader) + cube_size * sizeof(double));
 }
 
-DataCube DataCube::operator+(const DataCube &other) const {
+DataCube DataCube::operator+(DataCube &other) {
 	DataCube result(allocator);
-	Apply(CubeBinaryOp::ADD, *this, other, result);
+
+	Apply([](const CubeCellValue &a, const CubeCellValue &b,
+	         double &out) { return CubeBinaryOp::Eval(CubeBinaryOp::ADD, a, b, out); },
+	      *this, other, result);
+
 	return result;
 }
 
-DataCube DataCube::operator+(const double &other) const {
+DataCube DataCube::operator+(double other) {
 	DataCube result(allocator);
-	Apply(CubeBinaryOp::ADD, *this, other, result);
+
+	Apply([](const CubeCellValue &a, const CubeCellValue &b,
+	         double &out) { return CubeBinaryOp::Eval(CubeBinaryOp::ADD, a, b, out); },
+	      *this, other, result);
+
 	return result;
 }
 
-DataCube DataCube::operator-(const DataCube &other) const {
+DataCube DataCube::operator-(DataCube &other) {
 	DataCube result(allocator);
-	Apply(CubeBinaryOp::SUBTRACT, *this, other, result);
+
+	Apply([](const CubeCellValue &a, const CubeCellValue &b,
+	         double &out) { return CubeBinaryOp::Eval(CubeBinaryOp::SUBTRACT, a, b, out); },
+	      *this, other, result);
+
 	return result;
 }
 
-DataCube DataCube::operator-(const double &other) const {
+DataCube DataCube::operator-(double other) {
 	DataCube result(allocator);
-	Apply(CubeBinaryOp::SUBTRACT, *this, other, result);
+
+	Apply([](const CubeCellValue &a, const CubeCellValue &b,
+	         double &out) { return CubeBinaryOp::Eval(CubeBinaryOp::SUBTRACT, a, b, out); },
+	      *this, other, result);
+
 	return result;
 }
 
-DataCube DataCube::operator*(const DataCube &other) const {
+DataCube DataCube::operator*(DataCube &other) {
 	DataCube result(allocator);
-	Apply(CubeBinaryOp::MULTIPLY, *this, other, result);
+
+	Apply([](const CubeCellValue &a, const CubeCellValue &b,
+	         double &out) { return CubeBinaryOp::Eval(CubeBinaryOp::MULTIPLY, a, b, out); },
+	      *this, other, result);
+
 	return result;
 }
 
-DataCube DataCube::operator*(const double &other) const {
+DataCube DataCube::operator*(double other) {
 	DataCube result(allocator);
-	Apply(CubeBinaryOp::MULTIPLY, *this, other, result);
+
+	Apply([](const CubeCellValue &a, const CubeCellValue &b,
+	         double &out) { return CubeBinaryOp::Eval(CubeBinaryOp::MULTIPLY, a, b, out); },
+	      *this, other, result);
+
 	return result;
 }
 
-DataCube DataCube::operator/(const DataCube &other) const {
+DataCube DataCube::operator/(DataCube &other) {
 	DataCube result(allocator);
-	Apply(CubeBinaryOp::DIVIDE, *this, other, result);
+
+	Apply([](const CubeCellValue &a, const CubeCellValue &b,
+	         double &out) { return CubeBinaryOp::Eval(CubeBinaryOp::DIVIDE, a, b, out); },
+	      *this, other, result);
+
 	return result;
 }
 
-DataCube DataCube::operator/(const double &other) const {
+DataCube DataCube::operator/(double other) {
 	DataCube result(allocator);
-	Apply(CubeBinaryOp::DIVIDE, *this, other, result);
+
+	Apply([](const CubeCellValue &a, const CubeCellValue &b,
+	         double &out) { return CubeBinaryOp::Eval(CubeBinaryOp::DIVIDE, a, b, out); },
+	      *this, other, result);
+
 	return result;
 }
 

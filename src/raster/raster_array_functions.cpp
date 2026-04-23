@@ -29,28 +29,22 @@ static void RestoreConstantIfNeeded(const DataChunk &args, Vector &result) {
 //======================================================================================================================
 
 struct RT_Cube2Array {
-	//! Transform a BLOB data band into an ARRAY of values.
+	//! Deserializes a datacube BLOB into a structured ARRAY value with metadata and pixel values.
 	static void Cube2Array(DataChunk &args, ExpressionState &state, Vector &result, const LogicalType &type) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
-		DataCube raw_cube(Allocator::Get(state.GetContext()));
 
-		// We loop over the rows by hand because BinaryExecutor only supports C++ primitives.
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 		for (idx_t i = 0; i < count; i++) {
 			Value blob = args.data[0].GetValue(i);
 			bool filter_nodata = args.data[1].GetValue(i).GetValue<bool>();
 
 			arg_cube.LoadBlob(blob);
+			Value array = arg_cube.ToArray(type, filter_nodata);
 
-			const DataHeader header = arg_cube.GetHeader();
-			if (header.data_format != DataFormat::RAW) {
-				arg_cube.ChangeFormat(DataFormat::RAW, raw_cube);
-				result.SetValue(i, raw_cube.ToArray(type, filter_nodata));
-			} else {
-				result.SetValue(i, arg_cube.ToArray(type, filter_nodata));
-			}
+			result.SetValue(i, std::move(array));
 		}
 		RestoreConstantIfNeeded(args, result);
 	}
@@ -119,14 +113,14 @@ struct RT_Cube2Array {
 //======================================================================================================================
 
 struct RT_Array2Cube {
-	//! Transform an ARRAY of values into a BLOB data band.
+	//! Serializes an ARRAY of pixel values plus metadata into a datacube BLOB.
 	static void Array2Cube(const LogicalType &type, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 
-		// We loop over the rows by hand because Executors only supports C++ primitives.
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 		for (idx_t i = 0; i < count; i++) {
 			Value in_array = args.data[0].GetValue(i);
 

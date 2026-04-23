@@ -37,24 +37,15 @@ struct RT_ChangeType {
 		const DataType::Value data_type = RasterUtils::LogicalTypeToDataType(logicalType);
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
-		DataCube raw_cube(Allocator::Get(state.GetContext()));
-		DataCube res_cube(Allocator::Get(state.GetContext()));
 
-		// We loop over the rows by hand because Executors only supports C++ primitives.
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 		for (idx_t i = 0; i < count; i++) {
 			Value blob = args.data[0].GetValue(i);
 
 			arg_cube.LoadBlob(blob);
+			arg_cube.ChangeType(data_type);
 
-			const DataHeader header = arg_cube.GetHeader();
-			if (header.data_format != DataFormat::RAW) {
-				arg_cube.ChangeFormat(DataFormat::RAW, raw_cube);
-				raw_cube.ChangeType(data_type, res_cube);
-				result.SetValue(i, res_cube.ToBlob());
-			} else {
-				arg_cube.ChangeType(data_type, res_cube);
-				result.SetValue(i, res_cube.ToBlob());
-			}
+			result.SetValue(i, arg_cube.ToBlob());
 		}
 		RestoreConstantIfNeeded(args, result);
 	}
@@ -118,100 +109,77 @@ struct RT_ChangeType {
 
 struct RT_Math {
 	//! Apply a unary operation to a data cube.
-	static void ApplyUnaryOp(const CubeUnaryOp op, DataChunk &args, ExpressionState &state, Vector &result) {
+	static void ApplyUnaryOp(CubeUnaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 1);
 		const idx_t count = args.size();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
-		DataCube raw_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
 
-		// We loop over the rows by hand because Executors only supports C++ primitives.
+		const CubeUnaryCellFunc func = [op](const CubeCellValue &value, double &result) {
+			return CubeUnaryOp::Eval(op, value, result);
+		};
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 		for (idx_t i = 0; i < count; i++) {
 			Value blob = args.data[0].GetValue(i);
-			arg_cube.LoadBlob(blob);
 
-			const DataHeader header = arg_cube.GetHeader();
-			if (header.data_format != DataFormat::RAW) {
-				arg_cube.ChangeFormat(DataFormat::RAW, raw_cube);
-				DataCube::Apply(op, raw_cube, res_cube);
-				result.SetValue(i, res_cube.ToBlob());
-			} else {
-				DataCube::Apply(op, arg_cube, res_cube);
-				result.SetValue(i, res_cube.ToBlob());
-			}
+			arg_cube.LoadBlob(blob);
+			DataCube::Apply(func, arg_cube, res_cube);
+
+			result.SetValue(i, res_cube.ToBlob());
 		}
 		RestoreConstantIfNeeded(args, result);
 	}
 
 	//! Apply a binary operation to two data cubes.
-	static void ApplyBinaryOp1(const CubeBinaryOp op, DataChunk &args, ExpressionState &state, Vector &result) {
+	static void ApplyBinaryOp1(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 
 		DataCube arg_cube_a(Allocator::Get(state.GetContext()));
 		DataCube arg_cube_b(Allocator::Get(state.GetContext()));
-		DataCube raw_cube_a(Allocator::Get(state.GetContext()));
-		DataCube raw_cube_b(Allocator::Get(state.GetContext()));
-		DataCube res_cube__(Allocator::Get(state.GetContext()));
-		DataCube *cube_a = nullptr;
-		DataCube *cube_b = nullptr;
+		DataCube tmp_cube_r(Allocator::Get(state.GetContext()));
 
-		// We loop over the rows by hand because Executors only supports C++ primitives.
+		const CubeBinaryCellFunc func = [op](const CubeCellValue &a, const CubeCellValue &b, double &result) {
+			return CubeBinaryOp::Eval(op, a, b, result);
+		};
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 		for (idx_t i = 0; i < count; i++) {
 			Value blob_a = args.data[0].GetValue(i);
 			Value blob_b = args.data[1].GetValue(i);
 
 			arg_cube_a.LoadBlob(blob_a);
 			arg_cube_b.LoadBlob(blob_b);
+			DataCube::Apply(func, arg_cube_a, arg_cube_b, tmp_cube_r);
 
-			const DataHeader header_a = arg_cube_a.GetHeader();
-			if (header_a.data_format != DataFormat::RAW) {
-				arg_cube_a.ChangeFormat(DataFormat::RAW, raw_cube_a);
-				cube_a = &raw_cube_a;
-			} else {
-				cube_a = &arg_cube_a;
-			}
-
-			const DataHeader header_b = arg_cube_b.GetHeader();
-			if (header_b.data_format != DataFormat::RAW) {
-				arg_cube_b.ChangeFormat(DataFormat::RAW, raw_cube_b);
-				cube_b = &raw_cube_b;
-			} else {
-				cube_b = &arg_cube_b;
-			}
-
-			DataCube::Apply(op, *cube_a, *cube_b, res_cube__);
-			result.SetValue(i, res_cube__.ToBlob());
+			result.SetValue(i, tmp_cube_r.ToBlob());
 		}
 		RestoreConstantIfNeeded(args, result);
 	}
 
 	//! Apply a binary operation to a data cube and a scalar value.
-	static void ApplyBinaryOp2(const CubeBinaryOp op, DataChunk &args, ExpressionState &state, Vector &result) {
+	static void ApplyBinaryOp2(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
-		DataCube raw_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
 
-		// We loop over the rows by hand because Executors only supports C++ primitives.
+		const CubeBinaryCellFunc func = [op](const CubeCellValue &a, const CubeCellValue &b, double &result) {
+			return CubeBinaryOp::Eval(op, a, b, result);
+		};
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 		for (idx_t i = 0; i < count; i++) {
 			Value blob = args.data[0].GetValue(i);
-
-			arg_cube.LoadBlob(blob);
 			const double value_b = args.data[1].GetValue(i).GetValue<double>();
 
-			const DataHeader header = arg_cube.GetHeader();
-			if (header.data_format != DataFormat::RAW) {
-				arg_cube.ChangeFormat(DataFormat::RAW, raw_cube);
-				DataCube::Apply(op, raw_cube, value_b, res_cube);
-				result.SetValue(i, res_cube.ToBlob());
-			} else {
-				DataCube::Apply(op, arg_cube, value_b, res_cube);
-				result.SetValue(i, res_cube.ToBlob());
-			}
+			arg_cube.LoadBlob(blob);
+			DataCube::Apply(func, arg_cube, value_b, res_cube);
+
+			result.SetValue(i, res_cube.ToBlob());
 		}
 		RestoreConstantIfNeeded(args, result);
 	}
@@ -226,7 +194,7 @@ struct RT_Math {
 		tags.insert("category", "scalar");
 
 		// Register unary operations
-		static constexpr std::array<std::tuple<const char *, CubeUnaryOp, const char *>, 5> unary_ops = {{
+		static constexpr std::array<std::tuple<const char *, CubeUnaryOp::Value, const char *>, 5> unary_ops = {{
 		    {"RT_CubeNeg", CubeUnaryOp::NEGATE, "Negate the values in the data cube element-wise."},
 		    {"RT_CubeAbs", CubeUnaryOp::ABSOLUTE, "Absolute value of the values in the data cube element-wise."},
 		    {"RT_CubeSqrt", CubeUnaryOp::SQUARE_ROOT, "Square root of the values in the data cube element-wise."},
@@ -249,7 +217,7 @@ struct RT_Math {
 		}
 
 		// Register binary operations
-		static constexpr std::array<std::tuple<const char *, CubeBinaryOp, const char *>, 18> binary_ops = {{
+		static constexpr std::array<std::tuple<const char *, CubeBinaryOp::Value, const char *>, 21> binary_ops = {{
 		    {"RT_CubeEqual", CubeBinaryOp::EQUAL,
 		     "Return 1 where values in datacube_a are equal to datacube_b or a scalar value, 0 otherwise."},
 		    {"RT_CubeNotEqual", CubeBinaryOp::NOT_EQUAL,
@@ -276,6 +244,13 @@ struct RT_Math {
 		     "Raise data cube to the power of other data cube or a scalar value element-wise."},
 		    {"RT_CubeMod", CubeBinaryOp::MOD,
 		     "Modulus of data cube by other data cube or a scalar value element-wise."},
+
+		    {"RT_CubeSet", CubeBinaryOp::SET,
+		     "Set the values in the data cube to the values in other data cube or a scalar value element-wise."},
+		    {"RT_CubeMin", CubeBinaryOp::MIN,
+		     "Take the minimum of the values in the data cube and other data cube or a scalar value element-wise."},
+		    {"RT_CubeMax", CubeBinaryOp::MAX,
+		     "Take the maximum of the values in the data cube and other data cube or a scalar value element-wise."},
 
 		    {"+", CubeBinaryOp::ADD, "Add to data cube other data cube or a scalar value element-wise."},
 		    {"-", CubeBinaryOp::SUBTRACT, "Subtract from data cube other data cube or a scalar value element-wise."},

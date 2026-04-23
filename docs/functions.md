@@ -17,8 +17,8 @@
 | [`RT_Cube2Array`](#rt_cube2array) | Transforms the data of the datacube columns into an array of a numeric data type. |
 | [`RT_Cube2Type`](#rt_cube2type) | Transforms a datacube column to another data type. |
 | [`RT_Array2Cube`](#rt_array2cube) | Transforms an array of numeric values into a datacube column. |
-| [`RT_CubeUnaryOp`](#rt_cubeunaryop) | Applies an unary operation to the values in the datacube element-wise. |
-| [`RT_CubeBinaryOp`](#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
+| [`RT_Cube<UnaryOp>`](#rt_cubeunaryop) | Applies an unary operation to the values in the datacube element-wise. |
+| [`RT_Cube<BinaryOp>`](#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
 
 ----
 
@@ -429,11 +429,11 @@ Applies an unary operation to the values in the datacube element-wise.
 
 | Function | Description |
 | -------- | ----------- |
-| `RT_CubeNeg` | Negate the values in the datacube element-wise. |
 | `RT_CubeAbs` | Takes the absolute value of the values in the datacube element-wise. |
-| `RT_CubeSqrt` | Takes the square root of the values in the datacube element-wise. |
-| `RT_CubeLog` | Takes the logarithm of the values in the datacube element-wise. |
 | `RT_CubeExp` | Takes the exponential of the values in the datacube element-wise. |
+| `RT_CubeLog` | Takes the logarithm of the values in the datacube element-wise. |
+| `RT_CubeNeg` | Negate the values in the datacube element-wise. |
+| `RT_CubeSqrt` | Takes the square root of the values in the datacube element-wise. |
 
 #### Signature
 
@@ -459,17 +459,21 @@ Applies a binary operation to the values in the datacube element-wise.
 
 | Function | Description |
 | -------- | ----------- |
+| `RT_CubeAdd` | Add the values in `datacube_a` to `datacube_b` or a scalar value element-wise. |
+| `RT_CubeDivide` | Divide the values in `datacube_a` by `datacube_b` or a scalar value element-wise. |
 | `RT_CubeEqual` | Return 1 where values in `datacube_a` are equal to `datacube_b` or a scalar value, 0 otherwise. |
-| `RT_CubeNotEqual` | Return 1 where values in `datacube_a` are not equal to `datacube_b` or a scalar value, 0 otherwise. |
 | `RT_CubeGreater` | Return 1 where values in `datacube_a` are greater than `datacube_b` or a scalar value, 0 otherwise. |
 | `RT_CubeGreaterEqual` | Return 1 where values in `datacube_a` are greater than or equal to `datacube_b` or a scalar value, 0 otherwise. |
 | `RT_CubeLess` | Return 1 where values in `datacube_a` are less than `datacube_b` or a scalar value, 0 otherwise. |
 | `RT_CubeLessEqual` | Return 1 where values in `datacube_a` are less than or equal to `datacube_b` or a scalar value, 0 otherwise. |
-| `RT_CubeAdd` | Add the values in `datacube_a` to `datacube_b` or a scalar value element-wise. |
-| `RT_CubeSubtract` | Subtract `datacube_b` or a scalar value from the values in `datacube_a` element-wise. |
+| `RT_CubeMax` | Return the maximum value between `datacube_a` and `datacube_b` or a scalar value element-wise. |
+| `RT_CubeMin` | Return the minimum value between `datacube_a` and `datacube_b` or a scalar value element-wise. |
+| `RT_CubeMod` | Take the modulus of the values in `datacube_a` by `datacube_b` or a scalar value element-wise. |
 | `RT_CubeMultiply` | Multiply the values in `datacube_a` by `datacube_b` or a scalar value element-wise. |
-| `RT_CubeDivide` | Divide the values in `datacube_a` by `datacube_b` or a scalar value element-wise. |
+| `RT_CubeNotEqual` | Return 1 where values in `datacube_a` are not equal to `datacube_b` or a scalar value, 0 otherwise. |
 | `RT_CubePow` | Take the power of the values in `datacube_a` to `datacube_b` or a scalar value element-wise. |
+| `RT_CubeSet` | Set the values in `datacube_a` from `datacube_b` or a scalar value element-wise. |
+| `RT_CubeSubtract` | Subtract `datacube_b` or a scalar value from the values in `datacube_a` element-wise. |
 
 The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported as aliases of the corresponding functions.
 
