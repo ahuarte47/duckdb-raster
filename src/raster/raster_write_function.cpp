@@ -22,13 +22,6 @@
 #include "gdal_priv.h"
 #include "gdal_utils.h"
 
-// STL
-#include <string>
-#include <cstdlib>
-#if defined(_WIN32) || defined(WIN32)
-#include <windows.h>
-#endif
-
 // Debug logging controlled by RASTER_DEBUG environment variable
 static int GetDebugLevel() {
 	static int level = -1;
@@ -388,27 +381,6 @@ struct RT_Write {
 	// Finalize
 	//------------------------------------------------------------------------------------------------------------------
 
-	//! Get the temporary directory for creating intermediate files.
-	static std::string GetTemporaryDirectory() {
-#if defined(_WIN32) || defined(WIN32)
-		static constexpr DWORD MAX_PATH_LENGTH = MAX_PATH + 1;
-		char tmpdir[MAX_PATH_LENGTH];
-		DWORD ret = GetTempPathA(MAX_PATH_LENGTH, tmpdir);
-		if (ret == 0 || ret > MAX_PATH_LENGTH) {
-			throw std::runtime_error("Cannot locate temporary directory");
-		}
-		return tmpdir;
-#else
-		const char *envs[] = {"TMPDIR", "TMP", "TEMP", nullptr};
-		for (int i = 0; envs[i]; ++i) {
-			const char *val = std::getenv(envs[i]);
-			if (val && val[0] != '\0')
-				return std::string(val);
-		}
-		return "/tmp";
-#endif
-	}
-
 	static void Finalize(ClientContext &context, FunctionData &fdata, GlobalFunctionData &gstate) {
 		auto &bind_data = fdata.Cast<BindData>();
 		auto &global_state = gstate.Cast<GlobalState>();
@@ -423,18 +395,13 @@ struct RT_Write {
 		// Create a Virtual Raster (VRT) from the in-memory tiles created in the sink phase,
 		// then create the final raster using the VRT as source.
 
-		const std::string temp_dir = RT_Write::GetTemporaryDirectory();
-		auto &fs = FileSystem::GetFileSystem(context);
-
-		// Build VRT mosaic from in-memory input tiles
-
 		std::vector<GDALDatasetH> dataset_handles;
 		dataset_handles.reserve(global_state.input_tiles.size());
 		for (auto &tile : global_state.input_tiles) {
 			dataset_handles.push_back(static_cast<GDALDatasetH>(tile.get()));
 		}
 
-		std::string vrt_path = fs.JoinPath(temp_dir, UUID::ToString(UUID::GenerateRandomUUID()) + ".vrt");
+		std::string vrt_path = "/vsimem/" + UUID::ToString(UUID::GenerateRandomUUID()) + ".vrt";
 		const char *vrt_argv[] = {"-r", bind_data.resampling_alg.c_str(), nullptr};
 
 		using GDALBuildVRTOptionsPtr = std::unique_ptr<GDALBuildVRTOptions, decltype(&GDALBuildVRTOptionsFree)>;
@@ -511,7 +478,6 @@ struct RT_Write {
 		translate_opts.reset();
 		vrt_dataset.reset();
 		global_state.input_tiles.clear();
-		fs.RemoveFile(vrt_path);
 
 		if (!output || usage_error) {
 			throw std::runtime_error("Failed to write output raster file: " + file_path);
