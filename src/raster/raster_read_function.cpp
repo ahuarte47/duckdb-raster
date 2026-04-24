@@ -11,6 +11,7 @@
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
 #include "duckdb/common/typedefs.hpp"
+#include "duckdb/common/types/uuid.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/parsed_data/create_copy_function_info.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
@@ -25,6 +26,7 @@
 
 // GDAL
 #include "gdal_priv.h"
+#include "gdal_utils.h"
 
 // Debug logging controlled by RASTER_DEBUG environment variable
 static int GetDebugLevel() {
@@ -78,7 +80,7 @@ struct RT_Read {
 	//------------------------------------------------------------------------------------------------------------------
 
 	struct BindData final : TableFunctionData {
-		string file_name;
+		std::vector<std::string> file_names;
 		named_parameter_map_t parameters;
 		DataFormat::Value data_format = DataFormat::Value::RAW;
 		bool skip_empty_tiles = true;
@@ -106,13 +108,44 @@ struct RT_Read {
 			// Ensure the GDAL dataset is properly closed when the bind data is destroyed.
 			dataset.reset();
 
-			RASTER_SCAN_DEBUG_LOG(1, "GDAL dataset closed: '%s'", file_name.c_str());
+			RASTER_SCAN_DEBUG_LOG(1, "GDAL dataset closed: '%s'",
+			                      file_names.size() > 1 ? "<multiple files>" : file_names[0].c_str());
 		}
 	};
 
-	static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
-	                                     vector<LogicalType> &return_types, vector<string> &names) {
+	static unique_ptr<FunctionData> BindUniqueFile(ClientContext &context, TableFunctionBindInput &input,
+	                                               vector<LogicalType> &return_types, vector<string> &names) {
+		std::vector<std::string> file_names;
+
 		const auto file_path = input.inputs[0].GetValue<string>();
+		file_names.push_back(file_path);
+
+		return Bind(context, input, return_types, names, file_names);
+	}
+
+	static unique_ptr<FunctionData> BindMultiFile(ClientContext &context, TableFunctionBindInput &input,
+	                                              vector<LogicalType> &return_types, vector<string> &names) {
+		std::vector<std::string> file_names;
+
+		if (input.inputs.empty()) {
+			throw InvalidInputException("Expected a list of file paths as input");
+		}
+		if (input.inputs[0].type().id() != LogicalTypeId::LIST) {
+			throw InvalidInputException("Expected a list of file paths for the first argument");
+		}
+		for (const auto &child : ListValue::GetChildren(input.inputs[0])) {
+			file_names.push_back(StringValue::Get(child));
+		}
+		return Bind(context, input, return_types, names, file_names);
+	}
+
+	static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
+	                                     vector<LogicalType> &return_types, vector<string> &names,
+	                                     std::vector<std::string> &file_names) {
+		if (file_names.empty()) {
+			throw InvalidInputException("No input files provided.");
+		}
+
 		const auto &params = input.named_parameters;
 
 		DataFormat::Value data_format = DataFormat::Value::RAW;
@@ -132,22 +165,67 @@ struct RT_Read {
 
 		// Open the dataset.
 
-		const auto gdal_options = NamedParametersAsVector(params, "open_options");
-		const auto gdal_drivers = NamedParametersAsVector(params, "allowed_drivers");
-		const auto gdal_sibling = NamedParametersAsVector(params, "sibling_files");
-
 		GDALDatasetUniquePtr dataset;
-		dataset = GDALDatasetUniquePtr(GDALDataset::Open(file_path.c_str(), GDAL_OF_RASTER | GDAL_OF_VERBOSE_ERROR,
-		                                                 gdal_drivers.empty() ? nullptr : gdal_drivers.data(),
-		                                                 gdal_options.empty() ? nullptr : gdal_options.data(),
-		                                                 gdal_sibling.empty() ? nullptr : gdal_sibling.data()));
 
-		if (!dataset.get()) {
-			const std::string error = RasterUtils::GetLastGdalErrorMsg();
-			throw IOException("Could not open file: " + file_path + " (" + error + ")");
+		if (file_names.size() == 1) {
+			std::string file_path = file_names[0];
+
+			const auto gdal_options = NamedParametersAsVector(params, "open_options");
+			const auto gdal_drivers = NamedParametersAsVector(params, "allowed_drivers");
+			const auto gdal_sibling = NamedParametersAsVector(params, "sibling_files");
+
+			dataset = GDALDatasetUniquePtr(GDALDataset::Open(file_path.c_str(), GDAL_OF_RASTER | GDAL_OF_VERBOSE_ERROR,
+			                                                 gdal_drivers.empty() ? nullptr : gdal_drivers.data(),
+			                                                 gdal_options.empty() ? nullptr : gdal_options.data(),
+			                                                 gdal_sibling.empty() ? nullptr : gdal_sibling.data()));
+
+			if (!dataset.get()) {
+				const std::string error = RasterUtils::GetLastGdalErrorMsg();
+				throw IOException("Could not open file: " + file_path + " (" + error + ")");
+			}
+			RASTER_SCAN_DEBUG_LOG(1, "GDAL dataset opened: '%s'", file_path.c_str());
+
+		} else {
+			bool separate_bands = false;
+			if (params.find("separate_bands") != params.end()) {
+				separate_bands = params.at("separate_bands").GetValue<bool>();
+			}
+
+			// Build a VRT mosaic from the input files using GDAL's in-memory filesystem.
+
+			std::string vrt_path = "/vsimem/" + UUID::ToString(UUID::GenerateRandomUUID()) + ".vrt";
+			std::vector<std::string> vrt_args = {"-r", "nearest"};
+
+			if (separate_bands) {
+				vrt_args.push_back("-separate");
+			}
+
+			std::vector<const char *> vrt_argv;
+			for (const auto &s : vrt_args) {
+				vrt_argv.push_back(s.c_str());
+			}
+			vrt_argv.push_back(nullptr);
+
+			using GDALBuildVRTOptionsPtr = std::unique_ptr<GDALBuildVRTOptions, decltype(&GDALBuildVRTOptionsFree)>;
+
+			GDALBuildVRTOptionsPtr vrt_opts(GDALBuildVRTOptionsNew(const_cast<char **>(vrt_argv.data()), nullptr),
+			                                GDALBuildVRTOptionsFree);
+
+			std::vector<const char *> file_paths;
+			for (const auto &fn : file_names) {
+				file_paths.push_back(fn.c_str());
+			}
+
+			dataset = GDALDatasetUniquePtr(
+			    GDALDataset::FromHandle(GDALBuildVRT(vrt_path.c_str(), static_cast<int>(file_paths.size()), nullptr,
+			                                         file_paths.data(), vrt_opts.get(), nullptr)));
+
+			if (!dataset.get()) {
+				const std::string error = RasterUtils::GetLastGdalErrorMsg();
+				throw IOException("Failed to build VRT mosaic from input files (" + error + ")");
+			}
+			RASTER_SCAN_DEBUG_LOG(1, "GDAL dataset opened: '<multiple files>'");
 		}
-
-		RASTER_SCAN_DEBUG_LOG(1, "GDAL dataset opened: '%s'", file_path.c_str());
 
 		// Fetch the dataset metadata.
 
@@ -343,7 +421,7 @@ struct RT_Read {
 		// Return the bind data.
 
 		auto result = make_uniq<BindData>();
-		result->file_name = file_path;
+		result->file_names = std::move(file_names);
 		result->parameters = params;
 		result->data_format = data_format;
 		result->skip_empty_tiles = skip_empty_tiles;
@@ -835,29 +913,42 @@ struct RT_Read {
 		tags.insert("ext", "raster");
 		tags.insert("category", "table");
 
-		TableFunction func("RT_Read", {LogicalType::VARCHAR}, Execute, Bind, Init);
-		func.cardinality = Cardinality;
-		func.table_scan_progress = Progress;
+		// Configure the functions and register them in the function set.
 
-		// Optional parameters
-		func.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
-		func.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
-		func.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
-		func.named_parameters["data_format"] = LogicalType::VARCHAR;
-		func.named_parameters["blocksize_x"] = LogicalType::INTEGER;
-		func.named_parameters["blocksize_y"] = LogicalType::INTEGER;
-		func.named_parameters["skip_empty_tiles"] = LogicalType::BOOLEAN;
-		func.named_parameters["datacube"] = LogicalType::BOOLEAN;
+		TableFunctionSet function_set("RT_Read");
 
-		// Enable projection pushdown - allows DuckDB to tell us which columns are needed
-		// The column_ids will be passed to InitGlobal via TableFunctionInitInput
-		func.projection_pushdown = true;
+		TableFunction func_01("RT_Read", {LogicalType::VARCHAR}, Execute, BindUniqueFile, Init);
+		func_01.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
+		func_01.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
+		func_01.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
 
-		// Enable complex filter pushdown - handles expressions like (A AND B) OR (C AND D)
-		// that cannot be represented as simple TableFilter objects
-		func.pushdown_complex_filter = PushdownComplexFilter;
+		TableFunction func_02("RT_Read", {LogicalType::LIST(LogicalType::VARCHAR)}, Execute, BindMultiFile, Init);
+		func_02.named_parameters["separate_bands"] = LogicalType::BOOLEAN;
 
-		RegisterFunction<TableFunction>(loader, func, CatalogType::TABLE_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE, tags);
+		for (auto *func : {&func_01, &func_02}) {
+			func->cardinality = Cardinality;
+			func->table_scan_progress = Progress;
+
+			// Common optional parameters
+			func->named_parameters["data_format"] = LogicalType::VARCHAR;
+			func->named_parameters["blocksize_x"] = LogicalType::INTEGER;
+			func->named_parameters["blocksize_y"] = LogicalType::INTEGER;
+			func->named_parameters["skip_empty_tiles"] = LogicalType::BOOLEAN;
+			func->named_parameters["datacube"] = LogicalType::BOOLEAN;
+
+			// Enable projection pushdown - allows DuckDB to tell us which columns are needed
+			// The column_ids will be passed to InitGlobal via TableFunctionInitInput
+			func->projection_pushdown = true;
+
+			// Enable complex filter pushdown - handles expressions like (A AND B) OR (C AND D)
+			// that cannot be represented as simple TableFilter objects
+			func->pushdown_complex_filter = PushdownComplexFilter;
+
+			function_set.AddFunction(*func);
+		}
+
+		RegisterFunction<TableFunctionSet>(loader, function_set, CatalogType::TABLE_FUNCTION_ENTRY, DESCRIPTION,
+		                                   EXAMPLE, tags);
 
 		// Replacement scan
 		auto &db = loader.GetDatabaseInstance();

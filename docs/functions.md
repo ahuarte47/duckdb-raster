@@ -7,7 +7,7 @@
 | Function | Summary |
 | --- | --- |
 | [`RT_Drivers`](#rt_drivers) | Returns the list of supported GDAL RASTER drivers and file formats. |
-| [`RT_Read`](#rt_read) | Reads a raster file and returns a table with the raster data. |
+| [`RT_Read`](#rt_read) | Reads a raster file (or a mosaic of raster files) and returns a table with the raster data. |
 | [`COPY TO`](#rt_write) | Exports the data table to a new raster file. |
 
 **[Scalar Functions](#scalar-functions)**
@@ -48,11 +48,15 @@ SELECT * FROM RT_Drivers();
 
 ### RT_Read
 
+Open a raster file (or a mosaic of raster files) and return a table with the raster data.
+
+The function accepts a string or a list of strings as input. In case of a list of strings, the function creates a virtual raster (VRT) mosaic of the input files, which allows you to read multiple raster files as if they were one. This is especially useful when working with large rasters that are split into multiple files.
+
 The `RT_Read` table function is based on the [GDAL](https://gdal.org/index.html) translator library and enables reading raster data from a variety of geospatial raster file formats as if they were DuckDB tables.
 
 > See [RT_Drivers](#rt_drivers) for a list of supported file formats and drivers.
 
-The table returned by `RT_Read` is a tiled representation of the raster file, where each row corresponds to a tile of the raster. The tile size is determined by the original block size of the raster file, but it can be overridden by the user using the `blocksize_x` and `blocksize_y` parameters. The `geometry` column is a `GEOMETRY` of type `POLYGON` that represents the footprint of each tile, and you can use it to create a new geoparquet file by adding the option `GEOPARQUET_VERSION`.
+The table returned by `RT_Read` is a tiled representation of the raster file[s], where each row corresponds to a tile of the raster. The tile size is determined by the original block size of the raster file[s], but it can be overridden by the user using the `blocksize_x` and `blocksize_y` parameters. The `geometry` column is a `GEOMETRY` of type `POLYGON` that represents the footprint of each tile, and you can use it to create a new geoparquet file by adding the option `GEOPARQUET_VERSION`.
 
 Within this extension, the `databand` and `datacube` terms refer to the same underlying structure: an N-dimensional BLOB array holding the pixel values of one or more raster bands. A `databand` column refers to data for a single band, while a `datacube` column interleaves all bands into one. By default, `RT_Read` returns one `databand` column per band (`databand_1`, `databand_2`, etc.), but when the `datacube` option is set to `true`, it returns a single `datacube` column with all bands interleaved.
 
@@ -61,9 +65,10 @@ The `RT_Read` function accepts parameters, most of them optional:
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
 | `path` | VARCHAR | The path to the file to read. The only mandatory parameter. |
-| `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. |
-| `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. |
-| `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. |
+| `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
+| `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
+| `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. Only for single-file version of the function. |
+| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. |
 | `data_format` | VARCHAR | The data format to use when packing the databand column. `RAW` is the only option currently supported. |
 | `blocksize_x` | INTEGER | The block size of the tile in the x direction. You can use this parameter to override the original block size of the raster. |
 | `blocksize_y` | INTEGER | The block size of the tile in the y direction. You can use this parameter to override the original block size of the raster. |
@@ -121,7 +126,7 @@ Note that the `bbox` and `geometry` columns are available for spatial filtering;
 #### Signature
 
 ```sql
-RT_Read (file_path VARCHAR,
+RT_Read (file_path [VARCHAR,VARCHAR[]],
          open_options VARCHAR[] DEFAULT NULL,
          allowed_drivers VARCHAR[] DEFAULT NULL,
          sibling_files VARCHAR[] DEFAULT NULL,
@@ -136,6 +141,17 @@ RT_Read (file_path VARCHAR,
 
 ```sql
 SELECT * FROM RT_Read('path/to/raster/file.tif');
+
+SELECT
+    geometry, databand_1
+FROM
+    RT_Read([
+        'path/to/mosaic/raster-clip00.tif',
+        'path/to/mosaic/raster-clip01.tif',
+        'path/to/mosaic/raster-clip10.tif',
+        'path/to/mosaic/raster-clip11.tif'
+    ])
+;
 ```
 
 ----
@@ -186,9 +202,9 @@ COPY (
 		geometry,
 		databand_1, databand_2, databand_3
 	FROM
-		RT_Read('./test/data/overlay-sample.tiff')
+		RT_Read('path/to/raster/file.tif')
 )
-TO './test/data/copytoraster.tiff'
+TO 'path/to/output/file.tif'
 WITH (
 	FORMAT RASTER,
 	DRIVER 'COG',

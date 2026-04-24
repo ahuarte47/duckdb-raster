@@ -1,0 +1,42 @@
+# name: test/sql/rt_read_multi.test
+# description: test spatial_raster extension
+# group: [sql]
+
+require raster
+
+statement ok
+INSTALL json;
+
+statement ok
+LOAD json;
+
+query I
+SELECT
+    COUNT(id)
+FROM
+    RT_Read([
+        './test/data/mosaic/SCL.tif-land-clip00.tiff',
+        './test/data/mosaic/SCL.tif-land-clip01.tiff',
+        './test/data/mosaic/SCL.tif-land-clip10.tiff',
+        './test/data/mosaic/SCL.tif-land-clip11.tiff'
+    ])
+;
+----
+3477
+
+query III
+SELECT
+    metadata->>'width',
+    metadata->>'height',
+    metadata->>'bounds'
+FROM
+    RT_Read([
+        './test/data/mosaic/SCL.tif-land-clip00.tiff',
+        './test/data/mosaic/SCL.tif-land-clip01.tiff',
+        './test/data/mosaic/SCL.tif-land-clip10.tiff',
+        './test/data/mosaic/SCL.tif-land-clip11.tiff'
+    ])
+LIMIT 1
+;
+----
+7229	7793	[541020.0,4640780.0,685600.0,4796640.0]

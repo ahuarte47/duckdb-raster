@@ -40,7 +40,7 @@ After loading the extension, you can read and write raster files using SQL.
 | Function | Summary |
 | --- | --- |
 | [`RT_Drivers`](docs/functions.md#rt_drivers) | Returns the list of supported GDAL raster drivers and file formats. |
-| [`RT_Read`](docs/functions.md#rt_read) | Reads a raster file and returns a table with the raster data. |
+| [`RT_Read`](docs/functions.md#rt_read) | Reads a raster file (or a mosaic of raster files) and returns a table with the raster data. |
 | [`COPY TO`](docs/functions.md#rt_write) | Exports a data table to a new raster file. |
 
 **[Scalar Functions](docs/functions.md#scalar-functions)**
@@ -76,7 +76,7 @@ SELECT short_name, long_name, help_url FROM RT_Drivers();
 └────────────────┴──────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────┘
 ```
 
-#### Reading a raster file
+#### Reading a raster file (or a mosaic of raster files)
 
 ```sql
 SELECT * FROM RT_Read('path/to/raster/file.tif');
@@ -94,6 +94,20 @@ SELECT * FROM RT_Read('path/to/raster/file.tif');
 │       │           │            │  xmax: 545699.75,              │                         │       │        │        │       │       │            │            │
 │       │           │            │  ymax: 4724506.25}             │                         │       │        │        │       │       │            │            │
 └───────┴───────────┴────────────┴────────────────────────────────┴─────────────────────────┴───────┴────────┴────────┴───────┴───────┴────────────┴────────────┘
+```
+
+```sql
+-- Read multiple raster files as a mosaic using a VRT dataset
+SELECT
+    geometry, databand_1
+FROM
+    RT_Read([
+        'path/to/mosaic/raster-clip00.tif',
+        'path/to/mosaic/raster-clip01.tif',
+        'path/to/mosaic/raster-clip10.tif',
+        'path/to/mosaic/raster-clip11.tif'
+    ])
+;
 ```
 
 ```sql

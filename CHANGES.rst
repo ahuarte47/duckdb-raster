@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+0.6.0
+++++++++++++++++++
+
+- `RT_Read` supports to load multiple files as a mosaic using a VRT dataset.
+
 0.5.1
 ++++++++++++++++++
 
