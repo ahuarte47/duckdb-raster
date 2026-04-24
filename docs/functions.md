@@ -478,6 +478,7 @@ Applies a binary operation to the values in the datacube element-wise.
 | `RT_CubeAdd` | Add the values in `datacube_a` to `datacube_b` or a scalar value element-wise. |
 | `RT_CubeDivide` | Divide the values in `datacube_a` by `datacube_b` or a scalar value element-wise. |
 | `RT_CubeEqual` | Return 1 where values in `datacube_a` are equal to `datacube_b` or a scalar value, 0 otherwise. |
+| `RT_CubeFill` | Set the values in the data cube without any validity check from `datacube_b` or a scalar value element-wise. |
 | `RT_CubeGreater` | Return 1 where values in `datacube_a` are greater than `datacube_b` or a scalar value, 0 otherwise. |
 | `RT_CubeGreaterEqual` | Return 1 where values in `datacube_a` are greater than or equal to `datacube_b` or a scalar value, 0 otherwise. |
 | `RT_CubeLess` | Return 1 where values in `datacube_a` are less than `datacube_b` or a scalar value, 0 otherwise. |

@@ -224,7 +224,7 @@ struct RT_Read {
 				const std::string error = RasterUtils::GetLastGdalErrorMsg();
 				throw IOException("Failed to build VRT mosaic from input files (" + error + ")");
 			}
-			RASTER_SCAN_DEBUG_LOG(1, "GDAL dataset opened: '<multiple files>'");
+			RASTER_SCAN_DEBUG_LOG(1, "GDAL dataset opened: '%s'", "<multiple files>");
 		}
 
 		// Fetch the dataset metadata.

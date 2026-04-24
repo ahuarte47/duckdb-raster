@@ -1,4 +1,5 @@
 #include "data_types.hpp"
+#include "raster_types.hpp"
 
 #include <cmath>
 #include <stdexcept>
@@ -99,7 +100,20 @@ bool CubeCellValue::IsValidValue() const {
 	return !std::isnan(value) && !std::isinf(value) && value != no_data;
 }
 
+RasterCoord CubeCellValue::GetCoord(idx_t bands, idx_t cols, idx_t rows, idx_t index) {
+	const idx_t pixels_per_band = static_cast<idx_t>(cols) * static_cast<idx_t>(rows);
+	const idx_t pixel_in_band = index % pixels_per_band;
+	const int32_t col = static_cast<int32_t>(pixel_in_band % cols);
+	const int32_t row = static_cast<int32_t>(pixel_in_band / cols);
+	return RasterCoord(col, row);
+}
+
+RasterCoord CubeCellValue::GetCoord(const DataHeader &header) const {
+	return GetCoord(header.bands, header.cols, header.rows, index);
+}
+
 bool CubeUnaryOp::Eval(CubeUnaryOp::Value op, const CubeCellValue &cell_value, double &result) {
+	// For all operations, the value must be valid.
 	if (cell_value.IsValidValue()) {
 		switch (op) {
 		case CubeUnaryOp::Value::NEGATE:
@@ -125,6 +139,12 @@ bool CubeUnaryOp::Eval(CubeUnaryOp::Value op, const CubeCellValue &cell_value, d
 }
 
 bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const CubeCellValue &b, double &result) {
+	// FILL is a special case: it sets the value of the cell to b,
+	// regardless of a and without any validity check.
+	if (op == CubeBinaryOp::Value::FILL) {
+		result = b.value;
+		return true;
+	}
 	// OR is a special case: it selects the first non-nodata value between a and b, so it must
 	// run even when one or both inputs are nodata — before the general validity guard below.
 	if (op == CubeBinaryOp::Value::OR) {
@@ -138,6 +158,7 @@ bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const Cu
 		}
 		return false;
 	}
+	// For all other operations, both values must be valid.
 	if (a.IsValidValue() && b.IsValidValue()) {
 		switch (op) {
 		case CubeBinaryOp::Value::EQUAL:

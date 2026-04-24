@@ -217,7 +217,7 @@ struct RT_Math {
 		}
 
 		// Register binary operations
-		static constexpr std::array<std::tuple<const char *, CubeBinaryOp::Value, const char *>, 21> binary_ops = {{
+		static constexpr std::array<std::tuple<const char *, CubeBinaryOp::Value, const char *>, 22> binary_ops = {{
 		    {"RT_CubeEqual", CubeBinaryOp::EQUAL,
 		     "Return 1 where values in datacube_a are equal to datacube_b or a scalar value, 0 otherwise."},
 		    {"RT_CubeNotEqual", CubeBinaryOp::NOT_EQUAL,
@@ -251,6 +251,9 @@ struct RT_Math {
 		     "Take the minimum of the values in the data cube and other data cube or a scalar value element-wise."},
 		    {"RT_CubeMax", CubeBinaryOp::MAX,
 		     "Take the maximum of the values in the data cube and other data cube or a scalar value element-wise."},
+		    {"RT_CubeFill", CubeBinaryOp::FILL,
+		     "Set the values in the data cube without any validity check to the values in other data cube or a scalar "
+		     "value element-wise."},
 
 		    {"+", CubeBinaryOp::ADD, "Add to data cube other data cube or a scalar value element-wise."},
 		    {"-", CubeBinaryOp::SUBTRACT, "Subtract from data cube other data cube or a scalar value element-wise."},

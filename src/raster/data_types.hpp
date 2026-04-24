@@ -6,6 +6,8 @@
 
 namespace duckdb {
 
+struct RasterCoord;
+
 //! Magic code to identify a BLOB as a raster block (ASCII "RS" = 0x5253).
 #define DATA_BLOCK_HEADER_MAGIC ((uint16_t)0x5253)
 
@@ -82,6 +84,11 @@ struct CubeCellValue {
 	static bool IsValidValue(double value, double no_data);
 	//! Check if a value is valid to be used in computations.
 	bool IsValidValue() const;
+
+	//! Get the (col, row) coordinates of a cell in the tile.
+	static RasterCoord GetCoord(idx_t index, idx_t bands, idx_t cols, idx_t rows);
+	//! Get the (col, row) coordinates of this cell in the tile.
+	RasterCoord GetCoord(const DataHeader &header) const;
 };
 
 //! Unary operations that can be applied to a data cube.
@@ -137,7 +144,9 @@ struct CubeBinaryOp {
 		//! Take the maximum of the values in the data cube.
 		MAX = 14,
 		//! Take the first non no-data value between the values in the data cube.
-		OR = 15
+		OR = 15,
+		//! Set the value in the data cube without any validity check.
+		FILL = 16
 	};
 
 	//! Evaluate the binary operation on two values.
