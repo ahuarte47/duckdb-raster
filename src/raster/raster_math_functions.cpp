@@ -12,18 +12,6 @@ namespace duckdb {
 
 namespace {
 
-//! Restore the result vector to CONSTANT_VECTOR if all input vectors are CONSTANT_VECTOR.
-//! This is necessary to maintain the expected behavior in DuckDB when all arguments are
-//! literals.
-static void RestoreConstantIfNeeded(const DataChunk &args, Vector &result) {
-	for (idx_t j = 0; j < args.data.size(); j++) {
-		if (args.data[j].GetVectorType() != VectorType::CONSTANT_VECTOR) {
-			return;
-		}
-	}
-	result.SetVectorType(VectorType::CONSTANT_VECTOR);
-}
-
 //======================================================================================================================
 // RT_ChangeType
 //======================================================================================================================
@@ -47,7 +35,7 @@ struct RT_ChangeType {
 
 			result.SetValue(i, arg_cube.ToBlob());
 		}
-		RestoreConstantIfNeeded(args, result);
+		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -129,7 +117,7 @@ struct RT_Math {
 
 			result.SetValue(i, res_cube.ToBlob());
 		}
-		RestoreConstantIfNeeded(args, result);
+		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//! Apply a binary operation to two data cubes.
@@ -156,7 +144,7 @@ struct RT_Math {
 
 			result.SetValue(i, tmp_cube_r.ToBlob());
 		}
-		RestoreConstantIfNeeded(args, result);
+		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//! Apply a binary operation to a data cube and a scalar value.
@@ -181,7 +169,7 @@ struct RT_Math {
 
 			result.SetValue(i, res_cube.ToBlob());
 		}
-		RestoreConstantIfNeeded(args, result);
+		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------

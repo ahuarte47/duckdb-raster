@@ -12,18 +12,6 @@ namespace duckdb {
 
 namespace {
 
-//! Restore the result vector to CONSTANT_VECTOR if all input vectors are CONSTANT_VECTOR.
-//! This is necessary to maintain the expected behavior in DuckDB when all arguments are
-//! literals.
-static void RestoreConstantIfNeeded(const DataChunk &args, Vector &result) {
-	for (idx_t j = 0; j < args.data.size(); j++) {
-		if (args.data[j].GetVectorType() != VectorType::CONSTANT_VECTOR) {
-			return;
-		}
-	}
-	result.SetVectorType(VectorType::CONSTANT_VECTOR);
-}
-
 //======================================================================================================================
 // RT_Cube2Array
 //======================================================================================================================
@@ -46,7 +34,7 @@ struct RT_Cube2Array {
 
 			result.SetValue(i, std::move(array));
 		}
-		RestoreConstantIfNeeded(args, result);
+		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -135,7 +123,7 @@ struct RT_Array2Cube {
 
 			result.SetValue(i, arg_cube.ToBlob());
 		}
-		RestoreConstantIfNeeded(args, result);
+		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------

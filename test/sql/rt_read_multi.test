@@ -24,11 +24,13 @@ FROM
 ----
 3477
 
-query III
+query IIIII
 SELECT
-    metadata->>'width',
-    metadata->>'height',
-    metadata->>'bounds'
+    CAST(metadata->>'width' AS INTEGER) AS cols,
+    CAST(metadata->>'height' AS INTEGER) AS rows,
+    CAST(metadata->>'crs' AS VARCHAR) AS crs,
+    metadata->>'bounds' AS bounds,
+    CAST(metadata->>'bands'->>0->>'nodata' AS DOUBLE) AS nodata
 FROM
     RT_Read([
         './test/data/mosaic/SCL.tif-land-clip00.tiff',
@@ -39,4 +41,4 @@ FROM
 LIMIT 1
 ;
 ----
-7229	7793	[541020.0,4640780.0,685600.0,4796640.0]
+7229	7793	EPSG:32630	[541020.0,4640780.0,685600.0,4796640.0]	-9999.0

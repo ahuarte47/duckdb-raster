@@ -22,23 +22,6 @@
 #include "gdal_priv.h"
 #include "gdal_utils.h"
 
-// Debug logging controlled by RASTER_DEBUG environment variable
-static int GetDebugLevel() {
-	static int level = -1;
-	if (level == -1) {
-		const char *env = std::getenv("RASTER_DEBUG");
-		level = env ? std::atoi(env) : 0;
-	}
-	return level;
-}
-
-#define RASTER_SCAN_DEBUG_LOG(level, fmt, ...)                                                                         \
-	do {                                                                                                               \
-		if (GetDebugLevel() >= level) {                                                                                \
-			fprintf(stderr, "RASTER: " fmt "\n", ##__VA_ARGS__);                                                       \
-		}                                                                                                              \
-	} while (0)
-
 namespace duckdb {
 
 namespace {
@@ -291,7 +274,7 @@ struct RT_Write {
 				DataCube &data_cube = data_cubes[cube_idx++];
 				data_cube.LoadBlob(band_value);
 
-				if (!data_cube.IsNullOrEmpty()) {
+				if (data_cube.GetCubeSize() > 0) {
 					const DataHeader header_i = data_cube.GetHeader();
 					const GDALDataType data_type_i = RasterUtils::DataTypeToGdalType(header_i.data_type);
 					const int x_size_i = header_i.cols;

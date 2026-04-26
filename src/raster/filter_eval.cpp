@@ -1,26 +1,10 @@
 #include "raster_types.hpp"
+#include "raster_utils.hpp"
 #include "filter_eval.hpp"
 
 // DuckDB
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/execution/expression_executor_state.hpp"
-
-// Debug logging controlled by RASTER_DEBUG environment variable
-static int GetDebugLevel() {
-	static int level = -1;
-	if (level == -1) {
-		const char *env = std::getenv("RASTER_DEBUG");
-		level = env ? std::atoi(env) : 0;
-	}
-	return level;
-}
-
-#define RASTER_SCAN_DEBUG_LOG(level, fmt, ...)                                                                         \
-	do {                                                                                                               \
-		if (GetDebugLevel() >= level) {                                                                                \
-			fprintf(stderr, "RASTER: " fmt "\n", ##__VA_ARGS__);                                                       \
-		}                                                                                                              \
-	} while (0)
 
 namespace duckdb {
 

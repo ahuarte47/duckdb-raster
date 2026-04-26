@@ -530,7 +530,7 @@ void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &
 
 	const DataType::Value a_data_type = a.header.data_type;
 	CubeCellValue a_cell_val = {0, 0.0, a.header.no_data};
-	CubeCellValue b_cell_val = {0, b, a.header.no_data};
+	CubeCellValue b_cell_val = {0, b, NumericLimits<double>::Minimum()};
 	double result = 0.0;
 
 	for (idx_t i = 0; i < cube_size; i++) {
@@ -545,6 +545,29 @@ void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &
 		r_data_ptr++;
 	}
 	r.data_buffer.SetPosition(sizeof(DataHeader) + cube_size * sizeof(double));
+}
+
+void DataCube::Apply(const CubeCellFunc &func, DataCube &a) {
+	const idx_t cube_size = a.GetCubeSize();
+
+	// If the cube is empty, return doing nothing.
+	if (cube_size == 0) {
+		return;
+	}
+
+	a.EnsureRaw();
+
+	data_ptr_t a_data_ptr = a.data_buffer.GetData() + sizeof(DataHeader);
+	const DataType::Value a_data_type = a.header.data_type;
+	CubeCellValue a_cell_val = {0, 0.0, a.header.no_data};
+
+	for (idx_t i = 0; i < cube_size; i++) {
+		a_cell_val.index = i;
+		a_cell_val.value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
+
+		// Call the cell function with the cell value.
+		func(a_cell_val);
+	}
 }
 
 DataCube DataCube::operator+(DataCube &other) {

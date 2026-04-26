@@ -15,6 +15,9 @@ using CubeUnaryCellFunc = std::function<bool(const CubeCellValue &, double &)>;
 //! Callback type for custom binary cell operations.
 using CubeBinaryCellFunc = std::function<bool(const CubeCellValue &, const CubeCellValue &, double &)>;
 
+//! Callback type for generic cell operations.
+using CubeCellFunc = std::function<void(const CubeCellValue &)>;
+
 //! An N-dimensional data cube containing one or more raster bands, stored in a BLOB column.
 class DataCube {
 public:
@@ -89,14 +92,14 @@ public:
 	//! This is required to apply algebra operations on the data cube.
 	void EnsureRaw();
 
-	//! Apply a unary cell function to every cell of `a`, writing results into `r` (DOUBLE output).
+	//! Apply an unary cell function to every cell of `a`, writing results into `r`.
 	static void Apply(const CubeUnaryCellFunc &func, DataCube &a, DataCube &r);
-	//! Apply a binary cell function to every corresponding cell of `a` and `b`, writing results into `r` (DOUBLE
-	//! output).
+	//! Apply a binary cell function to every corresponding cell of `a` and `b`, writing results into `r`.
 	static void Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, DataCube &r);
-	//! Apply a binary cell function to every cell of `a` paired with the scalar `b`, writing results into `r` (DOUBLE
-	//! output).
+	//! Apply a binary cell function to every cell of `a` paired with the scalar `b`, writing results into `r`.
 	static void Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &b, DataCube &r);
+	//! Apply a generic cell function to every cell of `a`.
+	static void Apply(const CubeCellFunc &func, DataCube &a);
 
 	//! Add the values in the data cube.
 	DataCube operator+(DataCube &other);

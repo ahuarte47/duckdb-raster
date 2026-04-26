@@ -8,6 +8,23 @@
 // GDAL
 #include "gdal_priv.h"
 
+// Debug logging controlled by RASTER_DEBUG environment variable
+[[maybe_unused]] static int GetDebugLevel() {
+	static int level = -1;
+	if (level == -1) {
+		const char *env = std::getenv("RASTER_DEBUG");
+		level = env ? std::atoi(env) : 0;
+	}
+	return level;
+}
+
+#define RASTER_SCAN_DEBUG_LOG(level, fmt, ...)                                                                         \
+	do {                                                                                                               \
+		if (GetDebugLevel() >= level) {                                                                                \
+			fprintf(stderr, "RASTER: " fmt "\n", ##__VA_ARGS__);                                                       \
+		}                                                                                                              \
+	} while (0)
+
 namespace duckdb {
 
 //! Utility class for raster data handling.
@@ -32,5 +49,13 @@ public:
 	//! Convert a DataType to the corresponding GDALDataType.
 	static GDALDataType DataTypeToGdalType(const DataType::Value &data_type);
 };
+
+class DataChunk;
+class Vector;
+
+//! Restore the result vector to CONSTANT_VECTOR if all input vectors are CONSTANT_VECTOR.
+//! This is necessary to maintain the expected behavior in DuckDB when all arguments
+//! are literals.
+void RestoreConstantVectorIfNeeded(const DataChunk &args, Vector &result);
 
 } // namespace duckdb
