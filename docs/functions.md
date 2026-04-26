@@ -447,15 +447,15 @@ FROM
 
 ### RT_CubeUnaryOp
 
-Applies an unary operation to the values in the datacube element-wise.
+Applies a unary operation to each cell of the input datacube. Returns a new datacube of the same dimensions. No-data cells are preserved.
 
 | Function | Description |
 | -------- | ----------- |
-| `RT_CubeAbs` | Takes the absolute value of the values in the datacube element-wise. |
-| `RT_CubeExp` | Takes the exponential of the values in the datacube element-wise. |
-| `RT_CubeLog` | Takes the logarithm of the values in the datacube element-wise. |
-| `RT_CubeNeg` | Negate the values in the datacube element-wise. |
-| `RT_CubeSqrt` | Takes the square root of the values in the datacube element-wise. |
+| `RT_CubeNeg` | Returns a data cube with each cell negated (multiplied by -1). |
+| `RT_CubeAbs` | Returns a data cube with the absolute value of each cell. |
+| `RT_CubeSqrt` | Returns a data cube with the square root of each cell. |
+| `RT_CubeLog` | Returns a data cube with the natural logarithm of each cell. |
+| `RT_CubeExp` | Returns a data cube with the exponential (e^x) of each cell. |
 
 #### Signature
 
@@ -477,28 +477,40 @@ FROM
 
 ### RT_CubeBinaryOp
 
-Applies a binary operation to the values in the datacube element-wise.
+Applies a binary operation cell-by-cell between two datacubes or a datacube and a scalar. Returns a new datacube of the same dimensions. No-data cells are preserved unless otherwise noted.
+
+**Arithmetic**
 
 | Function | Description |
 | -------- | ----------- |
-| `RT_CubeAdd` | Add the values in `datacube_a` to `datacube_b` or a scalar value element-wise. |
-| `RT_CubeDivide` | Divide the values in `datacube_a` by `datacube_b` or a scalar value element-wise. |
-| `RT_CubeEqual` | Return 1 where values in `datacube_a` are equal to `datacube_b` or a scalar value, 0 otherwise. |
-| `RT_CubeFill` | Set the values in the data cube without any validity check from `datacube_b` or a scalar value element-wise. |
-| `RT_CubeGreater` | Return 1 where values in `datacube_a` are greater than `datacube_b` or a scalar value, 0 otherwise. |
-| `RT_CubeGreaterEqual` | Return 1 where values in `datacube_a` are greater than or equal to `datacube_b` or a scalar value, 0 otherwise. |
-| `RT_CubeLess` | Return 1 where values in `datacube_a` are less than `datacube_b` or a scalar value, 0 otherwise. |
-| `RT_CubeLessEqual` | Return 1 where values in `datacube_a` are less than or equal to `datacube_b` or a scalar value, 0 otherwise. |
-| `RT_CubeMax` | Return the maximum value between `datacube_a` and `datacube_b` or a scalar value element-wise. |
-| `RT_CubeMin` | Return the minimum value between `datacube_a` and `datacube_b` or a scalar value element-wise. |
-| `RT_CubeMod` | Take the modulus of the values in `datacube_a` by `datacube_b` or a scalar value element-wise. |
-| `RT_CubeMultiply` | Multiply the values in `datacube_a` by `datacube_b` or a scalar value element-wise. |
-| `RT_CubeNotEqual` | Return 1 where values in `datacube_a` are not equal to `datacube_b` or a scalar value, 0 otherwise. |
-| `RT_CubePow` | Take the power of the values in `datacube_a` to `datacube_b` or a scalar value element-wise. |
-| `RT_CubeSet` | Set the values in `datacube_a` from `datacube_b` or a scalar value element-wise. |
-| `RT_CubeSubtract` | Subtract `datacube_b` or a scalar value from the values in `datacube_a` element-wise. |
+| `RT_CubeAdd` (`+`) | Returns a data cube with each cell equal to the sum of the two inputs. |
+| `RT_CubeSubtract` (`-`) | Returns a data cube with each cell equal to the left-hand cell minus the right-hand cell. |
+| `RT_CubeMultiply` (`*`) | Returns a data cube with each cell equal to the product of the two inputs. |
+| `RT_CubeDivide` (`/`) | Returns a data cube with each cell equal to the left-hand cell divided by the right-hand cell. |
+| `RT_CubePow` (`^`) | Returns a data cube with each cell raised to the power of the right-hand value. |
+| `RT_CubeMod` (`%`) | Returns a data cube with each cell equal to the remainder of dividing the left-hand cell by the right-hand value. |
 
-The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported as aliases of the corresponding functions.
+**Comparison** (result cells are 1 if true, 0 if false)
+
+| Function | Description |
+| -------- | ----------- |
+| `RT_CubeEqual` | Returns a data cube where each cell is 1 if left == right, 0 otherwise. |
+| `RT_CubeNotEqual` | Returns a data cube where each cell is 1 if left != right, 0 otherwise. |
+| `RT_CubeLess` | Returns a data cube where each cell is 1 if left < right, 0 otherwise. |
+| `RT_CubeLessEqual` | Returns a data cube where each cell is 1 if left <= right, 0 otherwise. |
+| `RT_CubeGreater` | Returns a data cube where each cell is 1 if left > right, 0 otherwise. |
+| `RT_CubeGreaterEqual` | Returns a data cube where each cell is 1 if left >= right, 0 otherwise. |
+
+**Assignment / Utility**
+
+| Function | Description |
+| -------- | ----------- |
+| `RT_CubeSet` | Returns a data cube where valid cells are replaced by the right-hand value. No-data cells in the source are preserved. |
+| `RT_CubeFill` | Returns a data cube where all cells (including no-data) are unconditionally replaced by the right-hand value. |
+| `RT_CubeMin` | Returns a data cube with each cell equal to the minimum of the two inputs. |
+| `RT_CubeMax` | Returns a data cube with each cell equal to the maximum of the two inputs. |
+
+The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported as aliases of the corresponding arithmetic functions.
 
 #### Signature
 

@@ -94,15 +94,15 @@ struct CubeCellValue {
 //! Unary operations that can be applied to a data cube.
 struct CubeUnaryOp {
 	enum Value : uint8_t {
-		//! Negate the value (multiply by -1).
+		//! Returns a data cube with each cell negated (multiplied by -1).
 		NEGATE = 0,
-		//! Take the absolute value of the value.
+		//! Returns a data cube with the absolute value of each cell.
 		ABSOLUTE = 1,
-		//! Take the square root of the value.
+		//! Returns a data cube with the square root of each cell.
 		SQUARE_ROOT = 2,
-		//! Take the logarithm of the value.
+		//! Returns a data cube with the natural logarithm of each cell.
 		LOGARITHM = 3,
-		//! Take the exponential of the value.
+		//! Returns a data cube with the exponential (e^x) of each cell.
 		EXPONENTIAL = 4
 	};
 
@@ -113,40 +113,40 @@ struct CubeUnaryOp {
 //! Binary operations that can be applied to a data cube.
 struct CubeBinaryOp {
 	enum Value : uint8_t {
-		//! Compare the values in the data cube for equality.
-		EQUAL = 0,
-		//! Compare the values in the data cube for inequality.
-		NOT_EQUAL = 1,
-		//! Compare if the values in the data cube are greater.
-		GREATER = 2,
-		//! Compare if the values in the data cube are less.
-		LESS = 3,
-		//! Compare if the values in the data cube are greater or equal.
-		GREATER_EQUAL = 4,
-		//! Compare if the values in the data cube are less or equal.
-		LESS_EQUAL = 5,
-		//! Add the values in the data cube.
-		ADD = 6,
-		//! Subtract the values in the data cube.
-		SUBTRACT = 7,
-		//! Multiply the values in the data cube.
-		MULTIPLY = 8,
-		//! Divide the values in the data cube.
-		DIVIDE = 9,
-		//! Take the power of the values in the data cube.
-		POW = 10,
-		//! Take the modulus of the values in the data cube.
-		MOD = 11,
-		//! Set the value in the data cube.
+		//! Add the values of two data cubes or a data cube and a scalar, cell-by-cell.
+		ADD = 0,
+		//! Subtract the right-hand values from the left-hand data cube, cell-by-cell.
+		SUBTRACT = 1,
+		//! Multiply the values of two data cubes or a data cube and a scalar, cell-by-cell.
+		MULTIPLY = 2,
+		//! Divide the left-hand data cube by the right-hand data cube or scalar, cell-by-cell.
+		DIVIDE = 3,
+		//! Raise each cell of the left-hand data cube to the power of the right-hand value.
+		POW = 4,
+		//! Compute the remainder of dividing each left-hand cell by the right-hand value.
+		MOD = 5,
+		//! Return 1 where left == right, 0 otherwise.
+		EQUAL = 6,
+		//! Return 1 where left != right, 0 otherwise.
+		NOT_EQUAL = 7,
+		//! Return 1 where left < right, 0 otherwise.
+		LESS = 8,
+		//! Return 1 where left <= right, 0 otherwise.
+		LESS_EQUAL = 9,
+		//! Return 1 where left > right, 0 otherwise.
+		GREATER = 10,
+		//! Return 1 where left >= right, 0 otherwise.
+		GREATER_EQUAL = 11,
+		//! Replace valid cells with the corresponding values of the right-hand data cube or scalar.
 		SET = 12,
-		//! Take the minimum of the values in the data cube.
-		MIN = 13,
-		//! Take the maximum of the values in the data cube.
-		MAX = 14,
-		//! Take the first non no-data value between the values in the data cube.
-		OR = 15,
-		//! Set the value in the data cube without any validity check.
-		FILL = 16
+		//! Unconditionally replace all cells (including no-data) with the right-hand value.
+		FILL = 13,
+		//! Return the cell-wise minimum of the two inputs.
+		MIN = 14,
+		//! Return the cell-wise maximum of the two inputs.
+		MAX = 15,
+		//! Return the first non-no-data value between the two inputs, cell-by-cell.
+		OR = 16,
 	};
 
 	//! Evaluate the binary operation on two values.

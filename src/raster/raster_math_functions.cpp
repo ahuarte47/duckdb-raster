@@ -183,11 +183,16 @@ struct RT_Math {
 
 		// Register unary operations
 		static constexpr std::array<std::tuple<const char *, CubeUnaryOp::Value, const char *>, 5> unary_ops = {{
-		    {"RT_CubeNeg", CubeUnaryOp::NEGATE, "Negate the values in the data cube element-wise."},
-		    {"RT_CubeAbs", CubeUnaryOp::ABSOLUTE, "Absolute value of the values in the data cube element-wise."},
-		    {"RT_CubeSqrt", CubeUnaryOp::SQUARE_ROOT, "Square root of the values in the data cube element-wise."},
-		    {"RT_CubeLog", CubeUnaryOp::LOGARITHM, "Logarithm of the values in the data cube element-wise."},
-		    {"RT_CubeExp", CubeUnaryOp::EXPONENTIAL, "Exponential of the values in the data cube element-wise."},
+		    {"RT_CubeNeg", CubeUnaryOp::NEGATE,
+		     "Returns a data cube with each cell negated (multiplied by -1). No-data cells are preserved."},
+		    {"RT_CubeAbs", CubeUnaryOp::ABSOLUTE,
+		     "Returns a data cube with the absolute value of each cell. No-data cells are preserved."},
+		    {"RT_CubeSqrt", CubeUnaryOp::SQUARE_ROOT,
+		     "Returns a data cube with the square root of each cell. No-data cells are preserved."},
+		    {"RT_CubeLog", CubeUnaryOp::LOGARITHM,
+		     "Returns a data cube with the natural logarithm of each cell. No-data cells are preserved."},
+		    {"RT_CubeExp", CubeUnaryOp::EXPONENTIAL,
+		     "Returns a data cube with the exponential (e^x) of each cell. No-data cells are preserved."},
 		}};
 		for (const auto &entry : unary_ops) {
 			const auto &function_name = std::get<0>(entry);
@@ -206,49 +211,81 @@ struct RT_Math {
 
 		// Register binary operations
 		static constexpr std::array<std::tuple<const char *, CubeBinaryOp::Value, const char *>, 22> binary_ops = {{
-		    {"RT_CubeEqual", CubeBinaryOp::EQUAL,
-		     "Return 1 where values in datacube_a are equal to datacube_b or a scalar value, 0 otherwise."},
-		    {"RT_CubeNotEqual", CubeBinaryOp::NOT_EQUAL,
-		     "Return 1 where values in datacube_a are not equal to datacube_b or a scalar value, 0 otherwise."},
-		    {"RT_CubeGreater", CubeBinaryOp::GREATER,
-		     "Return 1 where values in datacube_a are greater than datacube_b or a scalar value, 0 otherwise."},
-		    {"RT_CubeLess", CubeBinaryOp::LESS,
-		     "Return 1 where values in datacube_a are less than datacube_b or a scalar value, 0 otherwise."},
-		    {"RT_CubeGreaterEqual", CubeBinaryOp::GREATER_EQUAL,
-		     "Return 1 where values in datacube_a are greater than or equal to datacube_b or a scalar value, 0 "
-		     "otherwise."},
-		    {"RT_CubeLessEqual", CubeBinaryOp::LESS_EQUAL,
-		     "Return 1 where values in datacube_a are less than or equal to datacube_b or a scalar value, 0 "
-		     "otherwise."},
-
-		    {"RT_CubeAdd", CubeBinaryOp::ADD, "Add to data cube other data cube or a scalar value element-wise."},
+		    // Arithmetic
+		    {"RT_CubeAdd", CubeBinaryOp::ADD,
+		     "Returns a data cube with each cell equal to the sum of the corresponding cells of the two inputs. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
 		    {"RT_CubeSubtract", CubeBinaryOp::SUBTRACT,
-		     "Subtract from data cube other data cube or a scalar value element-wise."},
+		     "Returns a data cube with each cell equal to the left-hand cell minus the right-hand cell. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
 		    {"RT_CubeMultiply", CubeBinaryOp::MULTIPLY,
-		     "Multiply data cube by other data cube or a scalar value element-wise."},
+		     "Returns a data cube with each cell equal to the product of the corresponding cells of the two inputs. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
 		    {"RT_CubeDivide", CubeBinaryOp::DIVIDE,
-		     "Divide data cube by other data cube or a scalar value element-wise."},
+		     "Returns a data cube with each cell equal to the left-hand cell divided by the right-hand cell. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
 		    {"RT_CubePow", CubeBinaryOp::POW,
-		     "Raise data cube to the power of other data cube or a scalar value element-wise."},
+		     "Returns a data cube with each cell raised to the power of the corresponding right-hand cell. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
 		    {"RT_CubeMod", CubeBinaryOp::MOD,
-		     "Modulus of data cube by other data cube or a scalar value element-wise."},
-
+		     "Returns a data cube with each cell equal to the remainder of dividing the left-hand cell by the "
+		     "right-hand cell. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    // Comparison
+		    {"RT_CubeEqual", CubeBinaryOp::EQUAL,
+		     "Returns a data cube where each cell is 1 if the corresponding cells of the two inputs are equal, "
+		     "0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    {"RT_CubeNotEqual", CubeBinaryOp::NOT_EQUAL,
+		     "Returns a data cube where each cell is 1 if the corresponding cells of the two inputs differ, "
+		     "0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    {"RT_CubeLess", CubeBinaryOp::LESS,
+		     "Returns a data cube where each cell is 1 if the left-hand cell is strictly less than the right-hand "
+		     "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		     "preserved."},
+		    {"RT_CubeLessEqual", CubeBinaryOp::LESS_EQUAL,
+		     "Returns a data cube where each cell is 1 if the left-hand cell is less than or equal to the right-hand "
+		     "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		     "preserved."},
+		    {"RT_CubeGreater", CubeBinaryOp::GREATER,
+		     "Returns a data cube where each cell is 1 if the left-hand cell is strictly greater than the right-hand "
+		     "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		     "preserved."},
+		    {"RT_CubeGreaterEqual", CubeBinaryOp::GREATER_EQUAL,
+		     "Returns a data cube where each cell is 1 if the left-hand cell is greater than or equal to the "
+		     "right-hand "
+		     "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		     "preserved."},
+		    // Assignment / utility
 		    {"RT_CubeSet", CubeBinaryOp::SET,
-		     "Set the values in the data cube to the values in other data cube or a scalar value element-wise."},
-		    {"RT_CubeMin", CubeBinaryOp::MIN,
-		     "Take the minimum of the values in the data cube and other data cube or a scalar value element-wise."},
-		    {"RT_CubeMax", CubeBinaryOp::MAX,
-		     "Take the maximum of the values in the data cube and other data cube or a scalar value element-wise."},
+		     "Returns a data cube where valid cells are replaced by the corresponding values of a second data cube or "
+		     "scalar. No-data cells in the source are preserved."},
 		    {"RT_CubeFill", CubeBinaryOp::FILL,
-		     "Set the values in the data cube without any validity check to the values in other data cube or a scalar "
-		     "value element-wise."},
-
-		    {"+", CubeBinaryOp::ADD, "Add to data cube other data cube or a scalar value element-wise."},
-		    {"-", CubeBinaryOp::SUBTRACT, "Subtract from data cube other data cube or a scalar value element-wise."},
-		    {"*", CubeBinaryOp::MULTIPLY, "Multiply data cube by other data cube or a scalar value element-wise."},
-		    {"/", CubeBinaryOp::DIVIDE, "Divide data cube by other data cube or a scalar value element-wise."},
-		    {"^", CubeBinaryOp::POW, "Raise data cube to the power of other data cube or a scalar value element-wise."},
-		    {"%", CubeBinaryOp::MOD, "Modulus of data cube by other data cube or a scalar value element-wise."},
+		     "Returns a data cube where all cells (including no-data) are unconditionally replaced by the "
+		     "corresponding values of a second data cube or scalar, bypassing no-data checks."},
+		    {"RT_CubeMin", CubeBinaryOp::MIN,
+		     "Returns a data cube with each cell equal to the minimum of the corresponding cells of the two inputs. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    {"RT_CubeMax", CubeBinaryOp::MAX,
+		     "Returns a data cube with each cell equal to the maximum of the corresponding cells of the two inputs. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    // Arithmetic operators
+		    {"+", CubeBinaryOp::ADD,
+		     "Returns a data cube with each cell equal to the sum of the corresponding cells of the two inputs. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    {"-", CubeBinaryOp::SUBTRACT,
+		     "Returns a data cube with each cell equal to the left-hand cell minus the right-hand cell. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    {"*", CubeBinaryOp::MULTIPLY,
+		     "Returns a data cube with each cell equal to the product of the corresponding cells of the two inputs. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    {"/", CubeBinaryOp::DIVIDE,
+		     "Returns a data cube with each cell equal to the left-hand cell divided by the right-hand cell. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    {"^", CubeBinaryOp::POW,
+		     "Returns a data cube with each cell raised to the power of the corresponding right-hand cell. "
+		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
+		    {"%", CubeBinaryOp::MOD,
+		     "Returns a data cube with each cell equal to the remainder of dividing the left-hand cell by the "
+		     "right-hand cell. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
 		}};
 		for (const auto &entry : binary_ops) {
 			const auto &function_name = std::get<0>(entry);

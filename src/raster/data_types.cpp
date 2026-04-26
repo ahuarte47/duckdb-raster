@@ -161,24 +161,7 @@ bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const Cu
 	// For all other operations, both values must be valid.
 	if (a.IsValidValue() && b.IsValidValue()) {
 		switch (op) {
-		case CubeBinaryOp::Value::EQUAL:
-			result = (a.value == b.value) ? 1.0 : 0.0;
-			return true;
-		case CubeBinaryOp::Value::NOT_EQUAL:
-			result = (a.value != b.value) ? 1.0 : 0.0;
-			return true;
-		case CubeBinaryOp::Value::GREATER:
-			result = (a.value > b.value) ? 1.0 : 0.0;
-			return true;
-		case CubeBinaryOp::Value::LESS:
-			result = (a.value < b.value) ? 1.0 : 0.0;
-			return true;
-		case CubeBinaryOp::Value::GREATER_EQUAL:
-			result = (a.value >= b.value) ? 1.0 : 0.0;
-			return true;
-		case CubeBinaryOp::Value::LESS_EQUAL:
-			result = (a.value <= b.value) ? 1.0 : 0.0;
-			return true;
+		// Arithmetic
 		case CubeBinaryOp::Value::ADD:
 			result = a.value + b.value;
 			return true;
@@ -201,6 +184,26 @@ bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const Cu
 		case CubeBinaryOp::Value::MOD:
 			result = std::fmod(a.value, b.value);
 			return true;
+		// Comparison
+		case CubeBinaryOp::Value::EQUAL:
+			result = (a.value == b.value) ? 1.0 : 0.0;
+			return true;
+		case CubeBinaryOp::Value::NOT_EQUAL:
+			result = (a.value != b.value) ? 1.0 : 0.0;
+			return true;
+		case CubeBinaryOp::Value::LESS:
+			result = (a.value < b.value) ? 1.0 : 0.0;
+			return true;
+		case CubeBinaryOp::Value::LESS_EQUAL:
+			result = (a.value <= b.value) ? 1.0 : 0.0;
+			return true;
+		case CubeBinaryOp::Value::GREATER:
+			result = (a.value > b.value) ? 1.0 : 0.0;
+			return true;
+		case CubeBinaryOp::Value::GREATER_EQUAL:
+			result = (a.value >= b.value) ? 1.0 : 0.0;
+			return true;
+		// Assignment / utility
 		case CubeBinaryOp::Value::SET:
 			result = b.value;
 			return true;
