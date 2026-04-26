@@ -134,9 +134,9 @@ SELECT
     RT_CubePolygonize(databand_1,
                       tile_x,
                       tile_y,
-                     (metadata->>'transform')::DOUBLE[],
                      (metadata->>'blocksize_x')::INTEGER,
-                     (metadata->>'blocksize_y')::INTEGER) AS geometry
+                     (metadata->>'blocksize_y')::INTEGER,
+                     (metadata->>'transform')::DOUBLE[]) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
 ;

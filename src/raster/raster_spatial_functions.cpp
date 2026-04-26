@@ -170,12 +170,11 @@ struct RT_CubePolygonize {
 
 			int32_t tile_x = args.data[1].GetValue(i).GetValue<int32_t>();
 			int32_t tile_y = args.data[2].GetValue(i).GetValue<int32_t>();
+			int32_t blocksize_x = args.data[3].GetValue(i).GetValue<int32_t>();
+			int32_t blocksize_y = args.data[4].GetValue(i).GetValue<int32_t>();
 
 			double gt[6] = {0};
-			ExtractGeoTransform(args.data[3].GetValue(i), gt);
-
-			int32_t blocksize_x = args.data[4].GetValue(i).GetValue<int32_t>();
-			int32_t blocksize_y = args.data[5].GetValue(i).GetValue<int32_t>();
+			ExtractGeoTransform(args.data[5].GetValue(i), gt);
 
 			const DataHeader header = arg_cube.GetHeader();
 			coords_vec.clear();
@@ -311,7 +310,7 @@ struct RT_CubePolygonize {
 
 		ScalarFunction function("RT_CubePolygonize",
 		                        {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
-		                         LogicalType::LIST(LogicalType::DOUBLE), LogicalType::INTEGER, LogicalType::INTEGER},
+		                         LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::LIST(LogicalType::DOUBLE)},
 		                        LogicalType::GEOMETRY(), Polygonize, nullptr, nullptr, nullptr, InitLocal);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,

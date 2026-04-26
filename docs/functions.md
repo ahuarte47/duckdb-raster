@@ -547,11 +547,11 @@ The function accepts the following parameters:
 | `databand` | DATACUBE | The datacube column to polygonize. |
 | `tile_x` | INTEGER | The tile x coordinate of the tile. |
 | `tile_y` | INTEGER | The tile y coordinate of the tile. |
-| `geo_transform` | DOUBLE[] | The Geo Transform matrix of the tile. This is an array of 6 values representing the affine transformation coefficients. |
 | `blocksize_x` | INTEGER | The block size of the tile in the x direction. |
 | `blocksize_y` | INTEGER | The block size of the tile in the y direction. |
+| `geo_transform` | DOUBLE[] | The Geo Transform matrix of the tile. This is an array of 6 values representing the affine transformation coefficients. |
 
-`geo_transform`, `blocksize_x`, and `blocksize_y` parameters can be extracted from the datacube `metadata` column.
+`blocksize_x`, `blocksize_y` and `geo_transform` parameters can be extracted from the datacube `metadata` column.
 
 #### Signature
 
@@ -559,9 +559,9 @@ The function accepts the following parameters:
 RT_CubePolygonize (databand DATACUBE,
                    tile_x INTEGER,
                    tile_y INTEGER,
-                   geo_transform DOUBLE[],
                    blocksize_x INTEGER,
-                   blocksize_y INTEGER)
+                   blocksize_y INTEGER,
+                   geo_transform DOUBLE[])
 ```
 
 #### Examples
@@ -573,9 +573,9 @@ SELECT
     RT_CubePolygonize(databand_1,
                       tile_x,
                       tile_y,
-                     (metadata->>'transform')::DOUBLE[],
                      (metadata->>'blocksize_x')::INTEGER,
-                     (metadata->>'blocksize_y')::INTEGER) AS geometry
+                     (metadata->>'blocksize_y')::INTEGER,
+                     (metadata->>'transform')::DOUBLE[]) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
