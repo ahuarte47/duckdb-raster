@@ -33,6 +33,13 @@ struct RasterCoord {
 	int32_t row;
 	explicit RasterCoord(int32_t col = 0, int32_t row = 0) : col(col), row(row) {
 	}
+
+	bool operator!=(const RasterCoord &other) const {
+		return col != other.col || row != other.row;
+	}
+	bool operator==(const RasterCoord &other) const {
+		return col == other.col && row == other.row;
+	}
 };
 
 class ExtensionLoader;

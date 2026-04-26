@@ -49,3 +49,129 @@ WHERE
 ;
 ----
 0	14400
+
+query II
+WITH __clip_layer AS (
+    SELECT geom FROM ST_Read('./test/data/CATAST_Pol_Township-PNA.geojson')
+),
+__dataset AS (
+    SELECT
+        geometry
+    FROM
+        __clip_layer,
+        RT_Read([
+            './test/data/mosaic/SCL.tif-land-clip00.tiff',
+            './test/data/mosaic/SCL.tif-land-clip01.tiff',
+            './test/data/mosaic/SCL.tif-land-clip10.tiff',
+            './test/data/mosaic/SCL.tif-land-clip11.tiff'
+        ])
+    WHERE
+        ST_Intersects(__clip_layer.geom, geometry)
+)
+SELECT count(*), ST_Area(ST_Union_Agg(geometry)) FROM __dataset;
+----
+12	78643200.0
+
+query I
+SELECT
+    ST_Area(
+        RT_CubePolygonize(databand_1,
+                          tile_x,
+                          tile_y,
+                         (metadata->>'transform')::DOUBLE[],
+                         (metadata->>'blocksize_x')::INTEGER,
+                         (metadata->>'blocksize_y')::INTEGER
+        )
+    )
+FROM
+    RT_Read('./test/data/overlay-sample.tiff')
+LIMIT 5 OFFSET 18
+;
+----
+640.0
+640.0
+640.0
+640.0
+320.0
+
+query I
+WITH __clip_layer AS (
+    SELECT geom FROM ST_Read('./test/data/CATAST_Pol_Township-PNA.geojson')
+),
+__dataset AS (
+    SELECT
+        tile_x, tile_y, geometry, databand_1, metadata
+    FROM
+        __clip_layer,
+        RT_Read([
+            './test/data/mosaic/SCL.tif-land-clip00.tiff',
+            './test/data/mosaic/SCL.tif-land-clip01.tiff',
+            './test/data/mosaic/SCL.tif-land-clip10.tiff',
+            './test/data/mosaic/SCL.tif-land-clip11.tiff'
+        ])
+    WHERE
+        ST_Intersects(__clip_layer.geom, geometry)
+)
+SELECT
+    ST_Area(
+        RT_CubePolygonize(databand_1,
+                          tile_x,
+                          tile_y,
+                         (metadata->>'transform')::DOUBLE[],
+                         (metadata->>'blocksize_x')::INTEGER,
+                         (metadata->>'blocksize_y')::INTEGER
+        )
+    )
+FROM
+    __dataset
+;
+----
+6553600.0
+6553600.0
+6553600.0
+6553600.0
+6553600.0
+6553600.0
+6553600.0
+6553600.0
+6553600.0
+6553600.0
+6553600.0
+6553600.0
+
+query I
+COPY (
+    WITH __clip_layer AS (
+        SELECT geom FROM ST_Read('./test/data/CATAST_Pol_Township-PNA.geojson')
+    ),
+    __dataset AS (
+        SELECT
+            id, x, y, tile_x, tile_y, cols, rows, geometry, databand_1, metadata
+        FROM
+            __clip_layer,
+            RT_Read([
+                './test/data/mosaic/SCL.tif-land-clip00.tiff',
+                './test/data/mosaic/SCL.tif-land-clip01.tiff',
+                './test/data/mosaic/SCL.tif-land-clip10.tiff',
+                './test/data/mosaic/SCL.tif-land-clip11.tiff'
+            ])
+        WHERE
+            ST_Intersects(__clip_layer.geom, geometry)
+    )
+    SELECT
+        RT_CubePolygonize(databand_1,
+                          tile_x,
+                          tile_y,
+                         (metadata->>'transform')::DOUBLE[],
+                         (metadata->>'blocksize_x')::INTEGER,
+                         (metadata->>'blocksize_y')::INTEGER) AS geometry,
+        * EXCLUDE(geometry, databand_1)
+    FROM
+        __dataset
+)
+TO '__TEST_DIR__/rastertogeom.gpkg'
+WITH (
+    FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:32630'
+);
+----
+12
