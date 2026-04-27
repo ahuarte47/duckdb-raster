@@ -86,10 +86,10 @@ static GEOSGeometry *CreatePolygon(GEOSContextHandle_t geos_ctx, const Point2D p
 }
 
 //======================================================================================================================
-// RT_CubePolygonize
+// RT_Polygonize
 //======================================================================================================================
 
-struct RT_CubePolygonize {
+struct RT_Polygonize {
 	//------------------------------------------------------------------------------------------------------------------
 	// Init Local
 	//------------------------------------------------------------------------------------------------------------------
@@ -291,9 +291,9 @@ struct RT_CubePolygonize {
 			RT_CubePolygonize(databand_1,
 							  tile_x,
 							  tile_y,
-						     (metadata->>'transform')::DOUBLE[],
 							 (metadata->>'blocksize_x')::INTEGER,
-							 (metadata->>'blocksize_y')::INTEGER)
+							 (metadata->>'blocksize_y')::INTEGER,
+							 (metadata->>'transform')::DOUBLE[])
 		FROM
 			my_raster_table
 		;
@@ -318,6 +318,202 @@ struct RT_CubePolygonize {
 	}
 };
 
+//======================================================================================================================
+// RT_SpatialOp
+//======================================================================================================================
+
+struct RT_SpatialOp {
+	//! Supported spatial operations that can be applied to data cubes.
+	enum SpatialOp : uint8_t {
+		CLIP = 0,
+		BURN = 1,
+	};
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Init Local
+	//------------------------------------------------------------------------------------------------------------------
+
+	static unique_ptr<FunctionLocalState> InitLocal(ExpressionState &state, const BoundFunctionExpression &expr,
+	                                                FunctionData *bind_data) {
+		return make_uniq<GEOSLocalState>();
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Function
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Evaluate a spatial operation on the input data cube.
+	static void EvalSpatialOp(const SpatialOp &op, DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 8);
+		const idx_t count = args.size();
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+		DataCube res_cube(Allocator::Get(state.GetContext()));
+
+		// If the transform matrix argument is constant across the whole chunk, parse it once.
+
+		double gt[6] = {0};
+		bool gt_is_constant = false;
+
+		if (count > 0 && args.data[5].GetVectorType() == VectorType::CONSTANT_VECTOR) {
+			ExtractGeoTransform(args.data[5].GetValue(0), gt);
+			gt_is_constant = true;
+		}
+
+		// Functions to hold the spatial coordinates of cells for the current row.
+
+		GEOSLocalState &glocal_state = ExecuteFunctionState::GetFunctionState(state)->Cast<GEOSLocalState>();
+		GEOSContextHandle_t geos_ctx = glocal_state.ctx;
+
+		auto geometry_free = [geos_ctx](GEOSGeometry *g) {
+			if (g) {
+				GEOSGeom_destroy_r(geos_ctx, g);
+			}
+		};
+		auto prep_geom_free = [geos_ctx](const GEOSPreparedGeometry *g) {
+			if (g) {
+				GEOSPreparedGeom_destroy_r(geos_ctx, g);
+			}
+		};
+		auto wkb_reader_free = [geos_ctx](GEOSWKBReader *r) {
+			if (r) {
+				GEOSWKBReader_destroy_r(geos_ctx, r);
+			}
+		};
+
+		std::shared_ptr<GEOSWKBReader> wkb_reader(GEOSWKBReader_create_r(geos_ctx), wkb_reader_free);
+		std::unique_ptr<GEOSGeometry, decltype(geometry_free)> raw_geom(nullptr, geometry_free);
+		std::unique_ptr<const GEOSPreparedGeometry, decltype(prep_geom_free)> prep_geom(nullptr, prep_geom_free);
+		bool geometry_is_constant = false;
+		Point2D points[4];
+
+		auto extract_geometry = [&](Value arg_value, std::unique_ptr<GEOSGeometry, decltype(geometry_free)> &raw_geom,
+		                            std::unique_ptr<const GEOSPreparedGeometry, decltype(prep_geom_free)> &prep_geom) {
+			const string &wkb_str = StringValue::Get(arg_value);
+			const_data_ptr_t data_ptr = const_data_ptr_t(wkb_str.data());
+			raw_geom.reset(GEOSWKBReader_read_r(geos_ctx, wkb_reader.get(), data_ptr, wkb_str.size()));
+			if (!raw_geom) {
+				throw InvalidInputException("Failed to parse input geometry WKB");
+			}
+			prep_geom.reset(GEOSPrepare_r(geos_ctx, raw_geom.get()));
+		};
+
+		if (count > 0 && args.data[6].GetVectorType() == VectorType::CONSTANT_VECTOR) {
+			extract_geometry(args.data[6].GetValue(0), raw_geom, prep_geom);
+			geometry_is_constant = true;
+		}
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
+
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+
+			arg_cube.LoadBlob(blob);
+			arg_cube.EnsureRaw();
+
+			int32_t tile_x = args.data[1].GetValue(i).GetValue<int32_t>();
+			int32_t tile_y = args.data[2].GetValue(i).GetValue<int32_t>();
+			int32_t blocksize_x = args.data[3].GetValue(i).GetValue<int32_t>();
+			int32_t blocksize_y = args.data[4].GetValue(i).GetValue<int32_t>();
+
+			// Parse input geo transform matrix?
+			if (!gt_is_constant) {
+				ExtractGeoTransform(args.data[5].GetValue(i), gt);
+			}
+
+			// Parse input geometry?
+			if (!geometry_is_constant) {
+				extract_geometry(args.data[6].GetValue(i), raw_geom, prep_geom);
+			}
+			if (!prep_geom) {
+				throw InvalidInputException("Failed to prepare geometry for row %lu", i);
+			}
+
+			// Evaluate the spatial operation on the data cube.
+
+			const DataHeader header = arg_cube.GetHeader();
+			double burn_value = args.data[7].GetValue(i).GetValue<double>();
+
+			auto coord_to_polygon = [&](const RasterCoord &coord) {
+				int32_t tx = tile_x * blocksize_x + coord.col;
+				int32_t ty = tile_y * blocksize_y + coord.row;
+				points[0] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty);
+				points[1] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty + 1);
+				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty + 1);
+				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty);
+				return CreatePolygon(geos_ctx, points);
+			};
+
+			auto evaluate_geometry = [&](const CubeCellValue &v, double &result) {
+				RasterCoord coord = v.GetCoord(header);
+
+				GEOSGeometry *polygon_ptr = coord_to_polygon(coord);
+				std::unique_ptr<GEOSGeometry, decltype(geometry_free)> polygon(polygon_ptr, geometry_free);
+
+				int inside = GEOSPreparedIntersects_r(geos_ctx, prep_geom.get(), polygon_ptr);
+				if (op == SpatialOp::CLIP) {
+					result = (inside == 1) ? v.value : burn_value;
+				} else {
+					result = (inside == 1) ? burn_value : v.value;
+				}
+				return true;
+			};
+			arg_cube.Apply(evaluate_geometry, arg_cube, res_cube);
+
+			// Free per-row geometry (not the shared constant one).
+
+			if (!geometry_is_constant) {
+				prep_geom.reset();
+				raw_geom.reset();
+			}
+
+			// Set the result.
+
+			result.SetValue(i, res_cube.ToBlob());
+		}
+		RestoreConstantVectorIfNeeded(args, result);
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "spatial");
+
+		// Register Spatial functions
+
+		static constexpr std::array<std::tuple<const char *, SpatialOp, const char *>, 2> spatial_ops = {{
+		    {"RT_CubeClip", SpatialOp::CLIP,
+		     "Returns a data cube where cells outside the given geometry are replaced by the specified value. "
+		     "Cells inside the geometry are preserved. No-data cells are preserved."},
+		    {"RT_CubeBurn", SpatialOp::BURN,
+		     "Returns a data cube where cells inside the given geometry are replaced by the specified value. "
+		     "Cells outside the geometry are preserved. No-data cells are preserved."},
+		}};
+		for (const auto &entry : spatial_ops) {
+			const auto &function_name = std::get<0>(entry);
+			const auto &op = std::get<1>(entry);
+			const auto &description = std::get<2>(entry);
+
+			const auto executor = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+				RT_SpatialOp::EvalSpatialOp(op, args, state, result);
+			};
+			ScalarFunction function =
+			    ScalarFunction(function_name,
+			                   {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
+			                    LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::LIST(LogicalType::DOUBLE),
+			                    LogicalType::GEOMETRY(), LogicalType::DOUBLE},
+			                   RasterTypes::DATACUBE(), executor, nullptr, nullptr, nullptr, InitLocal);
+
+			RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, description, "",
+			                                 tags);
+		}
+	}
+};
+
 } // namespace
 
 // #####################################################################################################################
@@ -326,7 +522,8 @@ struct RT_CubePolygonize {
 
 void RasterSpatialFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
-	RT_CubePolygonize::Register(loader);
+	RT_Polygonize::Register(loader);
+	RT_SpatialOp::Register(loader);
 }
 
 } // namespace duckdb

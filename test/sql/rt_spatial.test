@@ -175,3 +175,105 @@ WITH (
 );
 ----
 12
+
+query I
+COPY (
+    WITH __clip_layer AS (
+        SELECT geom FROM ST_Read('./test/data/CATAST_Pol_Township-PNA.geojson')
+    ),
+    __dataset AS (
+        SELECT
+            id, x, y, tile_x, tile_y, cols, rows, geometry, databand_1, metadata
+        FROM
+            __clip_layer,
+            RT_Read([
+                './test/data/mosaic/SCL.tif-land-clip00.tiff',
+                './test/data/mosaic/SCL.tif-land-clip01.tiff',
+                './test/data/mosaic/SCL.tif-land-clip10.tiff',
+                './test/data/mosaic/SCL.tif-land-clip11.tiff'
+            ])
+        WHERE
+            ST_Intersects(__clip_layer.geom, geometry)
+    ),
+    __clipped AS (
+        SELECT RT_CubeClip(databand_1,
+                           tile_x,
+                           tile_y,
+                          (metadata->>'blocksize_x')::INTEGER,
+                          (metadata->>'blocksize_y')::INTEGER,
+                          (metadata->>'transform')::DOUBLE[],
+                           __clip_layer.geom,
+                          (metadata->>'bands'->>0->>'nodata')::DOUBLE
+            ) AS databand_C, * EXCLUDE(databand_1)
+        FROM
+            __clip_layer,
+            __dataset
+    )
+    SELECT
+        RT_CubePolygonize(databand_C,
+                          tile_x,
+                          tile_y,
+                         (metadata->>'blocksize_x')::INTEGER,
+                         (metadata->>'blocksize_y')::INTEGER,
+                         (metadata->>'transform')::DOUBLE[]) AS geometry_C,
+        * EXCLUDE(geometry, geom, databand_C)
+    FROM
+        __clipped
+)
+TO '__TEST_DIR__/rastertoclipgeom.gpkg'
+WITH (
+    FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:32630'
+);
+----
+12
+
+query I
+COPY (
+    WITH __clip_layer AS (
+        SELECT geom FROM ST_Read('./test/data/CATAST_Pol_Township-PNA.geojson')
+    ),
+    __dataset AS (
+        SELECT
+            id, x, y, tile_x, tile_y, cols, rows, geometry, databand_1, metadata
+        FROM
+            __clip_layer,
+            RT_Read([
+                './test/data/mosaic/SCL.tif-land-clip00.tiff',
+                './test/data/mosaic/SCL.tif-land-clip01.tiff',
+                './test/data/mosaic/SCL.tif-land-clip10.tiff',
+                './test/data/mosaic/SCL.tif-land-clip11.tiff'
+            ])
+        WHERE
+            ST_Intersects(__clip_layer.geom, geometry)
+    ),
+    __clipped AS (
+        SELECT RT_CubeClip(databand_1,
+                           tile_x,
+                           tile_y,
+                          (metadata->>'blocksize_x')::INTEGER,
+                          (metadata->>'blocksize_y')::INTEGER,
+                          (metadata->>'transform')::DOUBLE[],
+                           __clip_layer.geom,
+                          (metadata->>'bands'->>0->>'nodata')::DOUBLE
+            ) AS databand_C, * EXCLUDE(databand_1)
+        FROM
+            __clip_layer,
+            __dataset
+    )
+    SELECT
+        geometry, databand_C AS databand
+    FROM
+        __clipped
+)
+TO '__TEST_DIR__/rastertoclipgeom.tiff'
+WITH (
+    FORMAT RASTER,
+    DRIVER 'GTiff',
+    CREATION_OPTIONS ('COMPRESS=LZW'),
+    RESAMPLING 'nearest',
+    SRS 'EPSG:32630',
+    GEOMETRY_COLUMN 'geometry',
+    DATABAND_COLUMNS ['databand']
+);
+----
+12

@@ -25,6 +25,8 @@
 | Function | Summary |
 | --- | --- |
 | [`RT_CubePolygonize`](#rt_cubepolygonize) | Creates a polygon geometry for each contiguous region of non-no-data values in the data cube. |
+| [`RT_CubeClip`](#rt_cubeclip) | Returns a data cube where cells outside the given geometry are replaced by the specified value. |
+| [`RT_CubeBurn`](#rt_cubeburn) | Returns a data cube where cells inside the given geometry are replaced by the specified value. |
 
 ----
 
@@ -576,6 +578,110 @@ SELECT
                      (metadata->>'blocksize_x')::INTEGER,
                      (metadata->>'blocksize_y')::INTEGER,
                      (metadata->>'transform')::DOUBLE[]) AS geometry
+FROM
+    RT_Read('path/to/raster/file.tif')
+;
+```
+
+----
+
+### RT_CubeClip
+
+Returns a data cube where cells outside the given geometry are replaced by the specified value. Cells inside the geometry are preserved. No-data cells are preserved.
+
+The function accepts the following parameters:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `databand` | DATACUBE | The input datacube column. |
+| `tile_x` | INTEGER | The tile x coordinate of the tile. |
+| `tile_y` | INTEGER | The tile y coordinate of the tile. |
+| `blocksize_x` | INTEGER | The block size of the tile in the x direction. |
+| `blocksize_y` | INTEGER | The block size of the tile in the y direction. |
+| `geo_transform` | DOUBLE[] | The Geo Transform matrix of the tile. This is an array of 6 values representing the affine transformation coefficients. |
+| `geometry` | GEOMETRY | The clip geometry. Cells outside this geometry will be replaced by `value`. | |
+| `value` | DOUBLE | The value to burn into cells outside the geometry. |
+
+#### Signature
+
+```sql
+RT_CubeClip (databand DATACUBE,
+             tile_x INTEGER,
+             tile_y INTEGER,
+             blocksize_x INTEGER,
+             blocksize_y INTEGER,
+             geo_transform DOUBLE[],
+             geometry GEOMETRY,
+             value DOUBLE)
+```
+
+#### Examples
+
+```sql
+LOAD json;
+LOAD spatial;
+
+SELECT
+    RT_CubeClip(databand_1,
+                tile_x,
+                tile_y,
+               (metadata->>'blocksize_x')::INTEGER,
+               (metadata->>'blocksize_y')::INTEGER,
+               (metadata->>'transform')::DOUBLE[],
+                ST_GeomFromText('POLYGON((...))')::GEOMETRY,
+                0.0) AS clipped
+FROM
+    RT_Read('path/to/raster/file.tif')
+;
+```
+
+----
+
+### RT_CubeBurn
+
+Returns a data cube where cells inside the given geometry are replaced by the specified value. Cells outside the geometry are preserved. No-data cells are preserved.
+
+The function accepts the following parameters:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `databand` | DATACUBE | The input datacube column. |
+| `tile_x` | INTEGER | The tile x coordinate of the tile. |
+| `tile_y` | INTEGER | The tile y coordinate of the tile. |
+| `blocksize_x` | INTEGER | The block size of the tile in the x direction. |
+| `blocksize_y` | INTEGER | The block size of the tile in the y direction. |
+| `geo_transform` | DOUBLE[] | The Geo Transform matrix of the tile. This is an array of 6 values representing the affine transformation coefficients. |
+| `geometry` | GEOMETRY | The burn geometry. Cells inside this geometry will be replaced by `value`. | |
+| `value` | DOUBLE | The value to burn into cells inside the geometry. |
+
+#### Signature
+
+```sql
+RT_CubeBurn (databand DATACUBE,
+             tile_x INTEGER,
+             tile_y INTEGER,
+             blocksize_x INTEGER,
+             blocksize_y INTEGER,
+             geo_transform DOUBLE[],
+             geometry GEOMETRY,
+             value DOUBLE)
+```
+
+#### Examples
+
+```sql
+LOAD json;
+LOAD spatial;
+
+SELECT
+    RT_CubeBurn(databand_1,
+                tile_x,
+                tile_y,
+               (metadata->>'blocksize_x')::INTEGER,
+               (metadata->>'blocksize_y')::INTEGER,
+               (metadata->>'transform')::DOUBLE[],
+                ST_GeomFromText('POLYGON((...))')::GEOMETRY,
+                0.0) AS burned
 FROM
     RT_Read('path/to/raster/file.tif')
 ;

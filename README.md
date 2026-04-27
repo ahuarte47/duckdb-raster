@@ -60,6 +60,8 @@ The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported.
 | Function | Summary |
 | --- | --- |
 | [`RT_CubePolygonize`](docs/functions.md#rt_cubepolygonize) | Creates a polygon geometry for each contiguous region of non-no-data values in the data cube. |
+| [`RT_CubeClip`](docs/functions.md#rt_cubeclip) | Returns a data cube where cells outside the given geometry are replaced by the specified value. |
+| [`RT_CubeBurn`](docs/functions.md#rt_cubeburn) | Returns a data cube where cells inside the given geometry are replaced by the specified value. |
 
 #### Listing available drivers
 
