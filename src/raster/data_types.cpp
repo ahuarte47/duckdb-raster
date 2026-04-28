@@ -68,6 +68,18 @@ DataFormat::Value DataFormat::FromString(const std::string &format_str) {
 	if (fmt == "RAW") {
 		return DataFormat::Value::RAW;
 	}
+	if (fmt == "SNAPPY") {
+		return DataFormat::Value::SNAPPY;
+	}
+	if (fmt == "GZIP") {
+		return DataFormat::Value::GZIP;
+	}
+	if (fmt == "ZSTD") {
+		return DataFormat::Value::ZSTD;
+	}
+	if (fmt == "LZ4" || fmt == "LZ4_RAW") {
+		return DataFormat::Value::LZ4_RAW;
+	}
 	throw std::invalid_argument("Invalid DataFormat string: " + format_str);
 }
 
@@ -75,6 +87,14 @@ std::string DataFormat::ToString(const DataFormat::Value &data_format) {
 	switch (data_format) {
 	case DataFormat::Value::RAW:
 		return "RAW";
+	case DataFormat::Value::SNAPPY:
+		return "SNAPPY";
+	case DataFormat::Value::GZIP:
+		return "GZIP";
+	case DataFormat::Value::ZSTD:
+		return "ZSTD";
+	case DataFormat::Value::LZ4_RAW:
+		return "LZ4";
 	default:
 		throw std::invalid_argument("Invalid DataFormat value: " + std::to_string(static_cast<int>(data_format)));
 	}

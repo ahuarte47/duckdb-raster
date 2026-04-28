@@ -35,7 +35,7 @@ struct DataType {
 
 //! Data format of a BLOB databand column, e.g. raw bytes, compressed, etc.
 struct DataFormat {
-	enum Value : uint8_t { RAW = 0 };
+	enum Value : uint8_t { RAW = 0, SNAPPY = 1, GZIP = 2, ZSTD = 3, LZ4_RAW = 4 };
 
 	//! Convert a string to a DataFormat.
 	static DataFormat::Value FromString(const std::string &format_str);

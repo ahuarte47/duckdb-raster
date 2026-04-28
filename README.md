@@ -206,7 +206,6 @@ For the full function reference and all available options, see [docs/functions.m
 
 This is the list of things I have in mind for the future, but if you want to contribute or have any suggestion please let me know!
 
-+ Add compression formats for the BLOB databand columns (`GZip`, `ZSTD`?).
 + Integration with DuckDB File System.
 
 ## How do I build it?

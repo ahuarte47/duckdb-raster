@@ -1,5 +1,6 @@
 #include "data_cube.hpp"
 #include "raster_types.hpp"
+#include "data_format_utils.hpp"
 
 namespace duckdb {
 
@@ -349,7 +350,28 @@ void DataCube::ChangeFormat(const DataFormat::Value &new_format) {
 	if (header.data_format == new_format) {
 		return;
 	}
-	throw std::runtime_error("Data format conversion is not implemented yet");
+	if (header.data_format != DataFormat::Value::RAW) {
+		size_t input_size = data_buffer.GetPosition() - sizeof(DataHeader);
+		const char *input_ptr = reinterpret_cast<const char *>(data_buffer.GetData() + sizeof(DataHeader));
+		temp_buffer.Rewind();
+		DataFormatUtils::Decompress(input_ptr, input_size, header.data_format, temp_buffer);
+		header.data_format = DataFormat::Value::RAW;
+		data_buffer.Rewind();
+		data_buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
+		data_buffer.WriteData(temp_buffer.GetData(), temp_buffer.GetPosition());
+		temp_buffer.Rewind();
+	}
+	if (new_format != DataFormat::Value::RAW) {
+		size_t input_size = data_buffer.GetPosition() - sizeof(DataHeader);
+		const char *input_ptr = reinterpret_cast<const char *>(data_buffer.GetData() + sizeof(DataHeader));
+		temp_buffer.Rewind();
+		DataFormatUtils::Compress(input_ptr, input_size, new_format, temp_buffer);
+		header.data_format = new_format;
+		data_buffer.Rewind();
+		data_buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
+		data_buffer.WriteData(temp_buffer.GetData(), temp_buffer.GetPosition());
+		temp_buffer.Rewind();
+	}
 }
 
 void DataCube::ChangeType(const DataType::Value &new_data_type) {

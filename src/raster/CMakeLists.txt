@@ -13,4 +13,5 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/filter_eval.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/data_cube.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/data_types.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/data_format_utils.cpp
     PARENT_SCOPE)

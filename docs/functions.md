@@ -104,6 +104,10 @@ The data band columns are a BLOB with the following internal structure:
 		| Code | Key | Description |
 		|------|-----------|-------------|
 		| 0    | RAW | Uncompressed raw data, interleaved by pixel and band |
+		| 1    | SNAPPY | Snappy compressed data |
+		| 2    | GZIP | GZIP compressed data |
+		| 3    | ZSTD | Zstandard compressed data |
+		| 4    | LZ4 | LZ4 compressed data |
 
 	+ `data_type` (uint8_t): Data type of the values of the tile data:
 

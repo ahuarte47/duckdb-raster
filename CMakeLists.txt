@@ -46,6 +46,8 @@ set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 project(${TARGET_NAME})
 include_directories(src/include)
 include_directories(src/raster)
+include_directories(duckdb/third_party/lz4)
+include_directories(duckdb/third_party/snappy)
 
 set(EXTENSION_SOURCES src/raster_extension.cpp)
 add_subdirectory(src/raster)

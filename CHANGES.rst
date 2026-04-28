@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+0.7.0
+++++++++++++++++++
+
++ Add compression formats for the BLOB databand columns (`SNAPPY`, `GZIP`, `ZSTD`, `LZ4`).
+
 0.6.0
 ++++++++++++++++++
 
