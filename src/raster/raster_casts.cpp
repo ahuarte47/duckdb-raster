@@ -81,6 +81,14 @@ struct RasterCasts {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// RT_STATS -> STRUCT
+	//------------------------------------------------------------------------------------------------------------------
+
+	static bool Stats2Struct(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		return DefaultCasts::NopCast(source, result, count, parameters);
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 
@@ -107,6 +115,9 @@ struct RasterCasts {
 		for (const auto &element_type : element_types) {
 			loader.RegisterCastFunction(RasterTypes::DATACUBE(), LogicalType::LIST(element_type), DataCube2List, 0);
 		}
+
+		// RT_STATS -> STRUCT
+		loader.RegisterCastFunction(RasterTypes::STATS(), LogicalType(LogicalTypeId::STRUCT), Stats2Struct, 0);
 	}
 };
 

@@ -5,6 +5,11 @@ Release history
 ++++++++++++++++++
 
 - `RT_Read` supports to load multiple files as a mosaic using a VRT dataset.
+- New `RT_CubeFill` function to fill unconditionally a datacube with a specified value.
+- New spatial function `RT_CubePolygonize` to perform polygonization on datacubes using geometries.
+- New spatial function `RT_CubeBurn` to fill a datacube with a specified value inside a given geometry.
+- New spatial function `RT_CubeClip` to clip a datacube with a specified value outside a given geometry.
+- New `RT_CubeStats` function to calculate statistics for a specific band of a data cube.
 
 0.5.1
 ++++++++++++++++++

@@ -30,10 +30,22 @@ LogicalType RasterTypes::ARRAY(const LogicalType &element_type) {
 	return array_type;
 }
 
+LogicalType RasterTypes::STATS() {
+	auto stats_type = LogicalType::STRUCT({{"minimum", LogicalType::DOUBLE},
+	                                       {"maximum", LogicalType::DOUBLE},
+	                                       {"mean", LogicalType::DOUBLE},
+	                                       {"stddev", LogicalType::DOUBLE},
+	                                       {"valid_count", LogicalType::BIGINT},
+	                                       {"nodata_count", LogicalType::BIGINT}});
+	stats_type.SetAlias("RT_STATS");
+	return stats_type;
+}
+
 void RasterTypes::Register(ExtensionLoader &loader) {
 	// Register types
 	loader.RegisterType("RT_BBOX", RasterTypes::BBOX());
 	loader.RegisterType("RT_DATACUBE", RasterTypes::DATACUBE());
+	loader.RegisterType("RT_STATS", RasterTypes::STATS());
 }
 
 } // namespace duckdb

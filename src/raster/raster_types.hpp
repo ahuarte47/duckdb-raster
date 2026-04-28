@@ -49,6 +49,7 @@ struct RasterTypes {
 	static LogicalType BBOX();
 	static LogicalType DATACUBE();
 	static LogicalType ARRAY(const LogicalType &element_type);
+	static LogicalType STATS();
 
 	static void Register(ExtensionLoader &loader);
 };

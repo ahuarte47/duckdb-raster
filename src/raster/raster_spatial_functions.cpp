@@ -118,6 +118,7 @@ struct RT_Polygonize {
 	static void Polygonize(DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
+		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 
@@ -271,7 +272,6 @@ struct RT_Polygonize {
 			Value geom_val = make_value(polygon.get());
 			result.SetValue(i, geom_val);
 		}
-		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -346,6 +346,7 @@ struct RT_SpatialOp {
 	static void EvalSpatialOp(const SpatialOp &op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 8);
 		const idx_t count = args.size();
+		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
@@ -471,7 +472,6 @@ struct RT_SpatialOp {
 
 			result.SetValue(i, res_cube.ToBlob());
 		}
-		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------

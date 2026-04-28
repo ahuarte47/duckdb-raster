@@ -21,6 +21,7 @@ struct RT_Cube2Array {
 	static void Cube2Array(DataChunk &args, ExpressionState &state, Vector &result, const LogicalType &type) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
+		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 
@@ -34,7 +35,6 @@ struct RT_Cube2Array {
 
 			result.SetValue(i, std::move(array));
 		}
-		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -105,6 +105,7 @@ struct RT_Array2Cube {
 	static void Array2Cube(const LogicalType &type, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
+		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 
@@ -123,7 +124,6 @@ struct RT_Array2Cube {
 
 			result.SetValue(i, arg_cube.ToBlob());
 		}
-		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------

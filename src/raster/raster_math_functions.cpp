@@ -13,6 +13,115 @@ namespace duckdb {
 namespace {
 
 //======================================================================================================================
+// RT_Stats
+//======================================================================================================================
+
+struct RT_Stats {
+	//! Statistics for a data cube band.
+	struct CubeStats {
+		int64_t valid_count = 0;
+		int64_t nodata_count = 0;
+		double sum = 0.0;
+		double mean = 0.0;
+		double m2 = 0.0;
+		double min_val = NumericLimits<double>::Maximum();
+		double max_val = NumericLimits<double>::Minimum();
+	};
+
+	//! Calculate statistics of a band of a data cube.
+	static void CalcStats(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 2);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+
+			arg_cube.LoadBlob(blob);
+
+			int band_index = args.data[1].GetValue(i).GetValue<int32_t>();
+			if (band_index < 0) {
+				throw std::runtime_error("Band index cannot be negative");
+			}
+			const DataHeader header = arg_cube.GetHeader();
+			if (band_index >= header.bands) {
+				throw std::runtime_error("Band index out of range");
+			}
+
+			// Compute statistics for the specified band.
+			CubeStats state;
+			auto stats_func = [&state](const CubeCellValue &v) {
+				if (!v.IsNoDataValue()) {
+					state.valid_count++;
+					state.sum += v.value;
+
+					if (v.value < state.min_val) {
+						state.min_val = v.value;
+					}
+					if (v.value > state.max_val) {
+						state.max_val = v.value;
+					}
+
+					// Welford's variance accumulator
+					double delta = v.value - state.mean;
+					state.mean += delta / state.valid_count;
+					double delta2 = v.value - state.mean;
+					state.m2 += delta * delta2;
+				} else {
+					state.nodata_count++;
+				}
+			};
+			DataCube::Apply(stats_func, arg_cube);
+
+			Value stats = Value::STRUCT(
+			    {{"minimum", Value::DOUBLE(state.valid_count > 0 ? state.min_val : 0.0)},
+			     {"maximum", Value::DOUBLE(state.valid_count > 0 ? state.max_val : 0.0)},
+			     {"mean", Value::DOUBLE(state.valid_count > 0 ? state.mean : 0.0)},
+			     {"stddev", Value::DOUBLE(state.valid_count > 0 ? std::sqrt(state.m2 / state.valid_count) : 0.0)},
+			     {"valid_count", Value::BIGINT(state.valid_count)},
+			     {"nodata_count", Value::BIGINT(state.nodata_count)}});
+
+			stats.Reinterpret(RasterTypes::STATS());
+			result.SetValue(i, stats);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Calculates statistics for a specific band (0-based index) of a data cube.
+
+		The statistics include minimum, maximum, average, standard deviation,
+		count of valid (non-nodata) values and count of nodata values.
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT RT_CubeStats(databand, 0) AS stats FROM RT_Read('path/to/raster/file.tif',
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "scalar");
+
+		const ScalarFunction function("RT_CubeStats", {RasterTypes::DATACUBE(), LogicalType::INTEGER},
+		                              RasterTypes::STATS(), CalcStats);
+
+		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
+		                                 tags);
+	}
+};
+
+//======================================================================================================================
 // RT_ChangeType
 //======================================================================================================================
 
@@ -21,6 +130,7 @@ struct RT_ChangeType {
 	static void Apply(const LogicalType &logicalType, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 1);
 		const idx_t count = args.size();
+		args.Flatten();
 
 		const DataType::Value data_type = RasterUtils::LogicalTypeToDataType(logicalType);
 
@@ -35,7 +145,6 @@ struct RT_ChangeType {
 
 			result.SetValue(i, arg_cube.ToBlob());
 		}
-		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -100,6 +209,7 @@ struct RT_Math {
 	static void ApplyUnaryOp(CubeUnaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 1);
 		const idx_t count = args.size();
+		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
@@ -117,13 +227,13 @@ struct RT_Math {
 
 			result.SetValue(i, res_cube.ToBlob());
 		}
-		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//! Apply a binary operation to two data cubes.
 	static void ApplyBinaryOp1(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
+		args.Flatten();
 
 		DataCube arg_cube_a(Allocator::Get(state.GetContext()));
 		DataCube arg_cube_b(Allocator::Get(state.GetContext()));
@@ -144,13 +254,13 @@ struct RT_Math {
 
 			result.SetValue(i, tmp_cube_r.ToBlob());
 		}
-		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//! Apply a binary operation to a data cube and a scalar value.
 	static void ApplyBinaryOp2(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
+		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
@@ -169,7 +279,6 @@ struct RT_Math {
 
 			result.SetValue(i, res_cube.ToBlob());
 		}
-		RestoreConstantVectorIfNeeded(args, result);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -324,6 +433,7 @@ struct RT_Math {
 
 void RasterMathFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
+	RT_Stats::Register(loader);
 	RT_ChangeType::Register(loader);
 	RT_Math::Register(loader);
 }

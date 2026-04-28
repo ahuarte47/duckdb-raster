@@ -19,6 +19,7 @@
 | [`RT_Array2Cube`](#rt_array2cube) | Transforms an array of numeric values into a datacube column. |
 | [`RT_Cube<UnaryOp>`](#rt_cubeunaryop) | Applies an unary operation to the values in the datacube element-wise. |
 | [`RT_Cube<BinaryOp>`](#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
+| [`RT_CubeStats`](#rt_cubestats) | Calculates statistics for a specific band of a data cube. |
 
 **[Spatial Functions](#spatial-functions)**
 
@@ -530,6 +531,59 @@ SELECT
 FROM
 	RT_Read('path/to/raster/file.tif')
 ;
+```
+
+----
+
+### RT_CubeStats
+
+Calculates statistics for a specific band (0-based index) of a data cube.
+
+The returned value is a `STRUCT` with the following fields:
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `minimum` | DOUBLE | Minimum pixel value among valid (non-nodata) cells. |
+| `maximum` | DOUBLE | Maximum pixel value among valid (non-nodata) cells. |
+| `mean` | DOUBLE | Mean (average) of all valid pixel values. |
+| `stddev` | DOUBLE | Population standard deviation of all valid pixel values. |
+| `valid_count` | BIGINT | Number of valid (non-nodata) cells. |
+| `nodata_count` | BIGINT | Number of nodata cells. |
+
+Function accepts the following parameters:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `databand` | DATACUBE | The datacube column to compute statistics for. |
+| `band_index` | INTEGER | The 0-based index of the band to compute statistics for. |
+
+#### Signature
+
+```sql
+RT_CubeStats (databand DATACUBE, band_index INTEGER)
+```
+
+#### Examples
+
+```sql
+SELECT
+    RT_CubeStats(databand_1, 0) AS stats
+FROM
+    RT_Read('path/to/raster/file.tif')
+;
+
+-- Access individual fields:
+SELECT
+    stats.minimum,
+    stats.maximum,
+    stats.mean,
+    stats.stddev,
+    stats.valid_count,
+    stats.nodata_count
+FROM (
+    SELECT RT_CubeStats(databand_1, 0) AS stats
+    FROM RT_Read('path/to/raster/file.tif')
+);
 ```
 
 ----

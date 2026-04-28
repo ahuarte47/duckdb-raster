@@ -11,17 +11,6 @@ namespace duckdb {
 // Raster utilities
 //======================================================================================================================
 
-void RestoreConstantVectorIfNeeded(const DataChunk &args, Vector &result) {
-	idx_t count = args.data.size();
-
-	for (idx_t j = 0; j < count; j++) {
-		if (args.data[j].GetVectorType() != VectorType::CONSTANT_VECTOR) {
-			return;
-		}
-	}
-	result.SetVectorType(VectorType::CONSTANT_VECTOR);
-}
-
 std::string RasterUtils::GetLastGdalErrorMsg() {
 	return std::string(CPLGetLastErrorMsg());
 }

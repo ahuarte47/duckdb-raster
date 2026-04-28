@@ -50,12 +50,4 @@ public:
 	static GDALDataType DataTypeToGdalType(const DataType::Value &data_type);
 };
 
-class DataChunk;
-class Vector;
-
-//! Restore the result vector to CONSTANT_VECTOR if all input vectors are CONSTANT_VECTOR.
-//! This is necessary to maintain the expected behavior in DuckDB when all arguments
-//! are literals.
-void RestoreConstantVectorIfNeeded(const DataChunk &args, Vector &result);
-
 } // namespace duckdb

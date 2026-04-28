@@ -52,6 +52,7 @@ After loading the extension, you can read and write raster files using SQL.
 | [`RT_Cube2Type`](docs/functions.md#rt_cube2type) | Transforms a datacube column into another data type. |
 | [`RT_Cube<BinaryOp>`](docs/functions.md#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
 | [`RT_Cube<UnaryOp>`](docs/functions.md#rt_cubeunaryop) | Applies a unary operation to the values in the datacube element-wise. |
+| [`RT_CubeStats`](docs/functions.md#rt_cubestats) | Calculates statistics for a specific band of a data cube. |
 
 The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported.
 
