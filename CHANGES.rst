@@ -4,6 +4,7 @@ Release history
 0.7.0
 ++++++++++++++++++
 
++ New `RT_CubeSetNoData` function to set a new nodata value for a datacube.
 + Add compression formats for the BLOB databand columns (`SNAPPY`, `GZIP`, `ZSTD`, `LZ4`).
 
 0.6.0

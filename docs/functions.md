@@ -513,6 +513,7 @@ Applies a binary operation cell-by-cell between two datacubes or a datacube and 
 | Function | Description |
 | -------- | ----------- |
 | `RT_CubeSet` | Returns a data cube where valid cells are replaced by the right-hand value. No-data cells in the source are preserved. |
+| `RT_CubeSetNoData` | Returns a data cube where nodata cells are replaced by the specified value, and sets this value as the new nodata sentinel. |
 | `RT_CubeFill` | Returns a data cube where all cells (including no-data) are unconditionally replaced by the right-hand value. |
 | `RT_CubeMin` | Returns a data cube with each cell equal to the minimum of the two inputs. |
 | `RT_CubeMax` | Returns a data cube with each cell equal to the maximum of the two inputs. |

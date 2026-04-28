@@ -165,6 +165,15 @@ bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const Cu
 		result = b.value;
 		return true;
 	}
+	// SET_NODATA is a special case: it sets the value of the cell to b and
+	// also updates the nodata sentinel to b.
+	if (op == CubeBinaryOp::Value::SET_NODATA) {
+		if (b.IsNoDataValue()) {
+			result = b.value;
+			return true;
+		}
+		return false;
+	}
 	// OR is a special case: it selects the first non-nodata value between a and b, so it must
 	// run even when one or both inputs are nodata — before the general validity guard below.
 	if (op == CubeBinaryOp::Value::OR) {

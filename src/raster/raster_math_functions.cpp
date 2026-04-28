@@ -238,8 +238,10 @@ struct RT_Math {
 		DataCube arg_cube_a(Allocator::Get(state.GetContext()));
 		DataCube arg_cube_b(Allocator::Get(state.GetContext()));
 		DataCube tmp_cube_r(Allocator::Get(state.GetContext()));
+		double tmp_b = 0;
 
-		const CubeBinaryCellFunc func = [op](const CubeCellValue &a, const CubeCellValue &b, double &result) {
+		const CubeBinaryCellFunc func = [op, &tmp_b](const CubeCellValue &a, const CubeCellValue &b, double &result) {
+			tmp_b = b.value; // Store the right-hand value in a temporary variable to be used in SET_NODATA operation.
 			return CubeBinaryOp::Eval(op, a, b, result);
 		};
 
@@ -251,6 +253,16 @@ struct RT_Math {
 			arg_cube_a.LoadBlob(blob_a);
 			arg_cube_b.LoadBlob(blob_b);
 			DataCube::Apply(func, arg_cube_a, arg_cube_b, tmp_cube_r);
+
+			// For SET_NODATA, we need to update the header of the resulting cube to set the new nodata value.
+			if (op == CubeBinaryOp::SET_NODATA) {
+				const DataHeader header = arg_cube_a.GetHeader();
+				DataHeader new_header = header;
+				new_header.no_data = tmp_b;
+				auto old_position = tmp_cube_r.GetBuffer().GetPosition();
+				tmp_cube_r.SetHeader(new_header, false);
+				tmp_cube_r.GetBuffer().SetPosition(old_position);
+			}
 
 			result.SetValue(i, tmp_cube_r.ToBlob());
 		}
@@ -276,6 +288,16 @@ struct RT_Math {
 
 			arg_cube.LoadBlob(blob);
 			DataCube::Apply(func, arg_cube, value_b, res_cube);
+
+			// For SET_NODATA, we need to update the header of the resulting cube to set the new nodata value.
+			if (op == CubeBinaryOp::SET_NODATA) {
+				const DataHeader header = arg_cube.GetHeader();
+				DataHeader new_header = header;
+				new_header.no_data = value_b;
+				auto old_position = res_cube.GetBuffer().GetPosition();
+				res_cube.SetHeader(new_header, false);
+				res_cube.GetBuffer().SetPosition(old_position);
+			}
 
 			result.SetValue(i, res_cube.ToBlob());
 		}
@@ -319,7 +341,7 @@ struct RT_Math {
 		}
 
 		// Register binary operations
-		static constexpr std::array<std::tuple<const char *, CubeBinaryOp::Value, const char *>, 22> binary_ops = {{
+		static constexpr std::array<std::tuple<const char *, CubeBinaryOp::Value, const char *>, 23> binary_ops = {{
 		    // Arithmetic
 		    {"RT_CubeAdd", CubeBinaryOp::ADD,
 		     "Returns a data cube with each cell equal to the sum of the corresponding cells of the two inputs. "
@@ -367,6 +389,9 @@ struct RT_Math {
 		    {"RT_CubeSet", CubeBinaryOp::SET,
 		     "Returns a data cube where valid cells are replaced by the corresponding values of a second data cube or "
 		     "scalar. No-data cells in the source are preserved."},
+		    {"RT_CubeSetNoData", CubeBinaryOp::SET_NODATA,
+		     "Returns a data cube where no-data cells are replaced by the specified value. Valid cells in the source "
+		     "are preserved."},
 		    {"RT_CubeFill", CubeBinaryOp::FILL,
 		     "Returns a data cube where all cells (including no-data) are unconditionally replaced by the "
 		     "corresponding values of a second data cube or scalar, bypassing no-data checks."},

@@ -139,14 +139,16 @@ struct CubeBinaryOp {
 		GREATER_EQUAL = 11,
 		//! Replace valid cells with the corresponding values of the right-hand data cube or scalar.
 		SET = 12,
+		//! Replace nodata cells with the specified value, and set this value as the new nodata sentinel.
+		SET_NODATA = 13,
 		//! Unconditionally replace all cells (including no-data) with the right-hand value.
-		FILL = 13,
+		FILL = 14,
 		//! Return the cell-wise minimum of the two inputs.
-		MIN = 14,
+		MIN = 15,
 		//! Return the cell-wise maximum of the two inputs.
-		MAX = 15,
+		MAX = 16,
 		//! Return the first non-no-data value between the two inputs, cell-by-cell.
-		OR = 16,
+		OR = 17,
 	};
 
 	//! Evaluate the binary operation on two values.
