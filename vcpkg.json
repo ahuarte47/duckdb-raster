@@ -4,6 +4,8 @@
         "zlib",
         "geos",
         "expat",
+        "snappy",
+        "lz4",
         {
             "name": "proj",
             "default-features": false,

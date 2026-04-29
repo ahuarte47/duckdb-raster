@@ -8,7 +8,7 @@
 #include "snappy.h"
 #include "miniz_wrapper.hpp"
 #include "zstd.h"
-#include "lz4.hpp"
+#include "lz4.h"
 
 namespace duckdb {
 
@@ -28,10 +28,10 @@ size_t DataFormatUtils::Compress(const char *input_ptr, size_t input_size, DataF
 		return input_size;
 	}
 	case DataFormat::Value::SNAPPY: {
-		size_t compressed_size = duckdb_snappy::MaxCompressedLength(input_size);
+		size_t compressed_size = snappy::MaxCompressedLength(input_size);
 		output.GrowCapacity(compressed_size);
 
-		duckdb_snappy::RawCompress(input_ptr, input_size, char_ptr_cast(output.GetData()), &compressed_size);
+		snappy::RawCompress(input_ptr, input_size, char_ptr_cast(output.GetData()), &compressed_size);
 		output.SetPosition(compressed_size);
 		return compressed_size;
 	}
@@ -61,7 +61,7 @@ size_t DataFormatUtils::Compress(const char *input_ptr, size_t input_size, DataF
 		// Prefix: 4 bytes storing the original uncompressed size (little-endian uint32).
 		// Required because LZ4 raw streams do not carry the uncompressed size.
 		constexpr size_t PREFIX_SIZE = sizeof(uint32_t);
-		size_t bound = duckdb_lz4::LZ4_compressBound(UnsafeNumericCast<int32_t>(input_size));
+		size_t bound = LZ4_compressBound(UnsafeNumericCast<int32_t>(input_size));
 		output.GrowCapacity(PREFIX_SIZE + bound);
 
 		// Write original size prefix.
@@ -73,8 +73,8 @@ size_t DataFormatUtils::Compress(const char *input_ptr, size_t input_size, DataF
 		prefix[3] = (orig >> 24) & 0xFF;
 
 		int compressed_size =
-		    duckdb_lz4::LZ4_compress_default(input_ptr, char_ptr_cast(output.GetData()) + PREFIX_SIZE,
-		                                     UnsafeNumericCast<int32_t>(input_size), UnsafeNumericCast<int32_t>(bound));
+		    LZ4_compress_default(input_ptr, char_ptr_cast(output.GetData()) + PREFIX_SIZE,
+		                         UnsafeNumericCast<int32_t>(input_size), UnsafeNumericCast<int32_t>(bound));
 
 		if (compressed_size <= 0) {
 			throw IOException("LZ4 compression failed");
@@ -106,12 +106,12 @@ size_t DataFormatUtils::Decompress(const char *input_ptr, size_t input_size, Dat
 		return input_size;
 	}
 	case DataFormat::Value::SNAPPY: {
-		if (!duckdb_snappy::GetUncompressedLength(input_ptr, input_size, &decompressed_size)) {
+		if (!snappy::GetUncompressedLength(input_ptr, input_size, &decompressed_size)) {
 			throw IOException("Failed to get uncompressed length for Snappy data");
 		}
 		output.GrowCapacity(decompressed_size);
 
-		if (!duckdb_snappy::RawUncompress(input_ptr, input_size, char_ptr_cast(output.GetData()))) {
+		if (!snappy::RawUncompress(input_ptr, input_size, char_ptr_cast(output.GetData()))) {
 			throw IOException("Failed to decompress Snappy data");
 		}
 		output.SetPosition(decompressed_size);
@@ -163,9 +163,9 @@ size_t DataFormatUtils::Decompress(const char *input_ptr, size_t input_size, Dat
 		decompressed_size = orig;
 		output.GrowCapacity(decompressed_size);
 
-		int result = duckdb_lz4::LZ4_decompress_safe(input_ptr + PREFIX_SIZE, char_ptr_cast(output.GetData()),
-		                                             UnsafeNumericCast<int32_t>(input_size - PREFIX_SIZE),
-		                                             UnsafeNumericCast<int32_t>(decompressed_size));
+		int result = LZ4_decompress_safe(input_ptr + PREFIX_SIZE, char_ptr_cast(output.GetData()),
+		                                 UnsafeNumericCast<int32_t>(input_size - PREFIX_SIZE),
+		                                 UnsafeNumericCast<int32_t>(decompressed_size));
 
 		if (result < 0) {
 			throw IOException("LZ4 decompression failed");

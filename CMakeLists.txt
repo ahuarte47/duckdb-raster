@@ -21,9 +21,11 @@ set(OPENSSL_USE_STATIC_LIBS ON)
 find_package(ZLIB REQUIRED)
 find_package(PROJ CONFIG REQUIRED)
 find_package(GDAL CONFIG REQUIRED)
+find_package(Snappy CONFIG REQUIRED)
+find_package(lz4 CONFIG REQUIRED)
 
 # Important: The link order matters, its the reverse order of dependency
-set(EXTENSION_DEPENDENCIES GDAL::GDAL PROJ::proj ZLIB::ZLIB)
+set(EXTENSION_DEPENDENCIES GDAL::GDAL PROJ::proj ZLIB::ZLIB Snappy::snappy lz4::lz4)
 
 if(SPATIAL_USE_NETWORK)
   message(STATUS "Building with network functionality")
@@ -46,8 +48,6 @@ set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 project(${TARGET_NAME})
 include_directories(src/include)
 include_directories(src/raster)
-include_directories(duckdb/third_party/lz4)
-include_directories(duckdb/third_party/snappy)
 
 set(EXTENSION_SOURCES src/raster_extension.cpp)
 add_subdirectory(src/raster)
