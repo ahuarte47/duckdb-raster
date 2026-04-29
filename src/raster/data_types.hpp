@@ -86,7 +86,7 @@ struct CubeCellValue {
 	bool IsValidValue() const;
 
 	//! Get the (col, row) coordinates of a cell in the tile.
-	static RasterCoord GetCoord(idx_t index, idx_t bands, idx_t cols, idx_t rows);
+	static RasterCoord GetCoord(idx_t bands, idx_t cols, idx_t rows, idx_t index);
 	//! Get the (col, row) coordinates of this cell in the tile.
 	RasterCoord GetCoord(const DataHeader &header) const;
 };

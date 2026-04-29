@@ -101,7 +101,7 @@ struct RT_Stats {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		SELECT RT_CubeStats(databand, 0) AS stats FROM RT_Read('path/to/raster/file.tif',
+		SELECT RT_CubeStats(databand, 0) AS stats FROM RT_Read('some/file/path/filename.tif');
 	)";
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -115,6 +115,58 @@ struct RT_Stats {
 
 		const ScalarFunction function("RT_CubeStats", {RasterTypes::DATACUBE(), LogicalType::INTEGER},
 		                              RasterTypes::STATS(), CalcStats);
+
+		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
+		                                 tags);
+	}
+};
+
+//======================================================================================================================
+// RT_NullOrEmpty
+//======================================================================================================================
+
+struct RT_NullOrEmpty {
+	//! Returns true if the data cube is null or empty, false otherwise.
+	static void Apply(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 1);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+
+			arg_cube.LoadBlob(blob);
+
+			result.SetValue(i, Value::BOOLEAN(arg_cube.IsNullOrEmpty()));
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Returns true if the data cube is null or empty, false otherwise.
+
+		A data cube is considered null or empty if it has no cells, or if every cell contains the nodata value.
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT RT_CubeNullOrEmpty(databand_1) FROM RT_Read('some/file/path/filename.tif');
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "scalar");
+
+		const ScalarFunction function("RT_CubeNullOrEmpty", {RasterTypes::DATACUBE()}, LogicalType::BOOLEAN, Apply);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
 		                                 tags);
@@ -159,7 +211,7 @@ struct RT_ChangeType {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		SELECT RT_Cube2TypeUInt8(databand_1 + databand_2) AS r FROM RT_Read('some/file/path/filename.tif);
+		SELECT RT_Cube2TypeUInt8(databand_1 + databand_2) AS r FROM RT_Read('some/file/path/filename.tif');
 	)";
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -459,6 +511,7 @@ struct RT_Math {
 void RasterMathFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
 	RT_Stats::Register(loader);
+	RT_NullOrEmpty::Register(loader);
 	RT_ChangeType::Register(loader);
 	RT_Math::Register(loader);
 }

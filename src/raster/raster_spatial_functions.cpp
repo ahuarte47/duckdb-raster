@@ -86,6 +86,105 @@ static GEOSGeometry *CreatePolygon(GEOSContextHandle_t geos_ctx, const Point2D p
 }
 
 //======================================================================================================================
+// RT_Bounds
+//======================================================================================================================
+
+struct RT_Bounds {
+	//------------------------------------------------------------------------------------------------------------------
+	// Function
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Compute the bounding box of the valid (non-no-data) cells in the input data cube and return it as a geometry.
+	static void Bounds(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 6);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+
+			arg_cube.LoadBlob(blob);
+			arg_cube.EnsureRaw();
+
+			int32_t tile_x = args.data[1].GetValue(i).GetValue<int32_t>();
+			int32_t tile_y = args.data[2].GetValue(i).GetValue<int32_t>();
+			int32_t blocksize_x = args.data[3].GetValue(i).GetValue<int32_t>();
+			int32_t blocksize_y = args.data[4].GetValue(i).GetValue<int32_t>();
+
+			double gt[6] = {0};
+			ExtractGeoTransform(args.data[5].GetValue(i), gt);
+
+			RasterBounds bbox;
+
+			if (!arg_cube.GetBounds(bbox)) {
+				// No valid cells, return NULL geometry.
+				result.SetValue(i, Value());
+			} else {
+				int32_t tx = tile_x * blocksize_x;
+				int32_t ty = tile_y * blocksize_y;
+				Point2D pt0 = RasterUtils::RasterCoordToWorldCoord(gt, tx + bbox.min_col, ty + bbox.max_row + 1);
+				Point2D pt1 = RasterUtils::RasterCoordToWorldCoord(gt, tx + bbox.max_col + 1, ty + bbox.max_row + 1);
+				Point2D pt2 = RasterUtils::RasterCoordToWorldCoord(gt, tx + bbox.max_col + 1, ty + bbox.min_row);
+				Point2D pt3 = RasterUtils::RasterCoordToWorldCoord(gt, tx + bbox.min_col, ty + bbox.min_row);
+
+				const std::string geometry_wkt =
+				    StringUtil::Format("POLYGON ((%f %f, %f %f, %f %f, %f %f, %f %f))", pt0.x, pt0.y, pt1.x, pt1.y,
+				                       pt2.x, pt2.y, pt3.x, pt3.y, pt0.x, pt0.y);
+
+				result.SetValue(i, geometry_wkt);
+			}
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Computes the bounding box of the valid (non-no-data) cells in the input data cube and
+		returns it as a geometry.
+
+		The fourth argument is a list of 6 doubles: [originX, pixelWidth, rotX, originY, rotY, pixelHeight],
+		it represents the geo_transform of the input data cube, which is used to convert pixel coordinates to
+		spatial coordinates.
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT
+			RT_CubeBounds(databand_1,
+                          tile_x,
+                          tile_y,
+                         (metadata->>'blocksize_x')::INTEGER,
+                         (metadata->>'blocksize_y')::INTEGER,
+                         (metadata->>'transform')::DOUBLE[])
+		FROM
+			my_raster_table
+		;
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "spatial");
+
+		ScalarFunction function("RT_CubeBounds",
+		                        {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
+		                         LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::LIST(LogicalType::DOUBLE)},
+		                        LogicalType::GEOMETRY(), Bounds, nullptr, nullptr, nullptr);
+
+		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
+		                                 tags);
+	}
+};
+
+//======================================================================================================================
 // RT_Polygonize
 //======================================================================================================================
 
@@ -522,6 +621,7 @@ struct RT_SpatialOp {
 
 void RasterSpatialFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
+	RT_Bounds::Register(loader);
 	RT_Polygonize::Register(loader);
 	RT_SpatialOp::Register(loader);
 }

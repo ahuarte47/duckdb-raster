@@ -60,6 +60,7 @@ The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported.
 
 | Function | Summary |
 | --- | --- |
+| [`RT_CubeBounds`](docs/functions.md#rt_cubebounds) | Computes the bounding box of the valid (non-no-data) cells in the input data cube and returns it as a geometry. |
 | [`RT_CubePolygonize`](docs/functions.md#rt_cubepolygonize) | Creates a polygon geometry for each contiguous region of non-no-data values in the data cube. |
 | [`RT_CubeClip`](docs/functions.md#rt_cubeclip) | Returns a data cube where cells outside the given geometry are replaced by the specified value. |
 | [`RT_CubeBurn`](docs/functions.md#rt_cubeburn) | Returns a data cube where cells inside the given geometry are replaced by the specified value. |
@@ -161,6 +162,7 @@ WITH (
 	CREATION_OPTIONS ('COMPRESS=LZW'),
 	RESAMPLING 'nearest',
 	ENVELOPE [545539.750, 4724420.250, 545699.750, 4724510.250],
+	--COMPUTE_VALID_ENVELOPE true,
 	SRS 'EPSG:25830',
 	GEOMETRY_COLUMN 'geometry',
 	DATABAND_COLUMNS ['databand_3', 'databand_2', 'databand_1']

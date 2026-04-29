@@ -2,6 +2,7 @@
 
 // DuckDB
 #include "duckdb/common/types.hpp"
+#include "duckdb/common/limits.hpp"
 
 namespace duckdb {
 
@@ -39,6 +40,44 @@ struct RasterCoord {
 	}
 	bool operator==(const RasterCoord &other) const {
 		return col == other.col && row == other.row;
+	}
+};
+
+//! Bounding box of a raster in pixel coordinates.
+struct RasterBounds {
+	int32_t min_col = NumericLimits<int32_t>::Maximum();
+	int32_t max_col = NumericLimits<int32_t>::Minimum();
+	int32_t min_row = NumericLimits<int32_t>::Maximum();
+	int32_t max_row = NumericLimits<int32_t>::Minimum();
+
+	RasterBounds()
+	    : min_col(NumericLimits<int32_t>::Maximum()), max_col(NumericLimits<int32_t>::Minimum()),
+	      min_row(NumericLimits<int32_t>::Maximum()), max_row(NumericLimits<int32_t>::Minimum()) {
+	}
+
+	//! Expand the bounding box to include the given column and row.
+	void Grow(int32_t col, int32_t row) {
+		if (col < min_col) {
+			min_col = col;
+		}
+		if (col > max_col) {
+			max_col = col;
+		}
+		if (row < min_row) {
+			min_row = row;
+		}
+		if (row > max_row) {
+			max_row = row;
+		}
+	}
+	//! Expand the bounding box to include the given coordinate.
+	void Grow(const RasterCoord &coord) {
+		Grow(coord.col, coord.row);
+	}
+
+	//! Returns true if the bounding box is empty (i.e. has no valid cells).
+	bool IsEmpty() const {
+		return min_col > max_col || min_row > max_row;
 	}
 };
 

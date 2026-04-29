@@ -166,3 +166,25 @@ FROM
 ;
 ----
 0.0	255.0	159.782638	62.911198	57600	0	0.0	255.0	119.094704	60.559050	57600	0	0.0	254.0	108.362517	61.648556	57600	0
+
+query I
+SELECT
+    count(*)
+FROM
+    RT_Read('./test/data/overlay-sample.tiff')
+WHERE
+    RT_CubeNullOrEmpty(databand_1)
+;
+----
+0
+
+query I
+SELECT
+    count(*)
+FROM
+    RT_Read('./test/data/overlay-sample.tiff')
+WHERE
+    RT_CubeNullOrEmpty(RT_CubeSetNoData(RT_CubeFill(databand_1, -9999.0), -9999.0))
+;
+----
+23

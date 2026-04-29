@@ -1,6 +1,12 @@
 Release history
 ---------------
 
+0.8.0
+++++++++++++++++++
+
+- New `RT_CubeBounds` function to compute the bounding box of the valid (non-no-data) cells in the input data cube and return it as a geometry.
+- New `RT_CubeNullOrEmpty` function to check if a data cube is null or empty (i.e. has no valid cells).
+
 0.7.0
 ++++++++++++++++++
 

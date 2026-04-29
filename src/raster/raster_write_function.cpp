@@ -31,6 +31,34 @@ namespace {
 //======================================================================================================================
 
 struct RT_Write {
+	//! Defines the bounding box of the valid (non-no-data) cells.
+	struct BoundingBox {
+		double min_x = NumericLimits<double>::Maximum();
+		double min_y = NumericLimits<double>::Maximum();
+		double max_x = NumericLimits<double>::Minimum();
+		double max_y = NumericLimits<double>::Minimum();
+
+		//! Expands the bounding box to include the given point.
+		void Grow(double x, double y) {
+			if (x < min_x) {
+				min_x = x;
+			}
+			if (x > max_x) {
+				max_x = x;
+			}
+			if (y < min_y) {
+				min_y = y;
+			}
+			if (y > max_y) {
+				max_y = y;
+			}
+		}
+		//! Expands the bounding box to include the given point.
+		void Grow(const Point2D &pt) {
+			Grow(pt.x, pt.y);
+		}
+	};
+
 	//------------------------------------------------------------------------------------------------------------------
 	// Bind
 	//------------------------------------------------------------------------------------------------------------------
@@ -43,6 +71,7 @@ struct RT_Write {
 		std::string resampling_alg = "nearest";
 
 		double output_envelope[4] = {0, 0, 0, 0};
+		bool compute_valid_envelope = false;
 		std::string output_srs;
 
 		int geometry_col = -1;
@@ -90,6 +119,13 @@ struct RT_Write {
 				}
 				for (idx_t i = 0; i < 4; i++) {
 					bind_data->output_envelope[i] = set[i].DefaultCastAs(LogicalType::DOUBLE).GetValue<double>();
+				}
+			} else if (key == "COMPUTE_VALID_ENVELOPE") {
+				auto set = option.second.front();
+				if (set.type().id() == LogicalTypeId::BOOLEAN) {
+					bind_data->compute_valid_envelope = set.GetValue<bool>();
+				} else {
+					throw BinderException("COMPUTE_VALID_ENVELOPE option must be a boolean.");
 				}
 			} else if (key == "SRS") {
 				auto set = option.second.front();
@@ -194,6 +230,7 @@ struct RT_Write {
 
 	struct GlobalState final : GlobalFunctionData {
 		std::vector<GDALDatasetUniquePtr> input_tiles;
+		BoundingBox valid_bbox;
 
 		explicit GlobalState(ClientContext &context) {
 		}
@@ -331,6 +368,28 @@ struct RT_Write {
 				data_ptr_t data_ptr = data_cube.GetBuffer().GetData() + sizeof(DataHeader);
 				const DataHeader &header = data_cube.GetHeader();
 
+				// Update the global valid bounding box with the bounds of this tile, if requested
+				if (bind_data.compute_valid_envelope) {
+					RasterBounds bounds;
+
+					if (data_cube.GetBounds(bounds)) {
+						Point2D pt0 =
+						    RasterUtils::RasterCoordToWorldCoord(geo_transform, bounds.min_col, bounds.max_row + 1);
+						Point2D pt1 =
+						    RasterUtils::RasterCoordToWorldCoord(geo_transform, bounds.max_col + 1, bounds.max_row + 1);
+						Point2D pt2 =
+						    RasterUtils::RasterCoordToWorldCoord(geo_transform, bounds.max_col + 1, bounds.min_row);
+						Point2D pt3 =
+						    RasterUtils::RasterCoordToWorldCoord(geo_transform, bounds.min_col, bounds.min_row);
+
+						global_state.valid_bbox.Grow(pt0);
+						global_state.valid_bbox.Grow(pt1);
+						global_state.valid_bbox.Grow(pt2);
+						global_state.valid_bbox.Grow(pt3);
+					}
+				}
+
+				// Write the tile data to the dataset, band by band.
 				for (int i = 0; i < header.bands; i++) {
 					GDALRasterBand *band = dataset->GetRasterBand(b);
 					if (!band) {
@@ -418,7 +477,14 @@ struct RT_Write {
 		const bool has_envelope = (bind_data.output_envelope[2] != bind_data.output_envelope[0] &&
 		                           bind_data.output_envelope[3] != bind_data.output_envelope[1]);
 
-		if (has_envelope) {
+		if (bind_data.compute_valid_envelope) {
+			// If the user requested to compute the valid envelope, we use the bounding box of the valid cells
+			translate_args.push_back("-projwin");
+			translate_args.push_back(std::to_string(global_state.valid_bbox.min_x)); // xmin
+			translate_args.push_back(std::to_string(global_state.valid_bbox.max_y)); // ymax
+			translate_args.push_back(std::to_string(global_state.valid_bbox.max_x)); // xmax
+			translate_args.push_back(std::to_string(global_state.valid_bbox.min_y)); // ymin
+		} else if (has_envelope) {
 			// GDALTranslate -projwin expects: ulx uly lrx lry -> xmin ymax xmax ymin
 			translate_args.push_back("-projwin");
 			translate_args.push_back(std::to_string(bind_data.output_envelope[0])); // xmin

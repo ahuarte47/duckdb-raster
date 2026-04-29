@@ -25,6 +25,7 @@
 
 | Function | Summary |
 | --- | --- |
+| [`RT_CubeBounds`](#rt_cubebounds) | Computes the bounding box of the valid (non-no-data) cells in the input data cube and returns it as a geometry. |
 | [`RT_CubePolygonize`](#rt_cubepolygonize) | Creates a polygon geometry for each contiguous region of non-no-data values in the data cube. |
 | [`RT_CubeClip`](#rt_cubeclip) | Returns a data cube where cells outside the given geometry are replaced by the specified value. |
 | [`RT_CubeBurn`](#rt_cubeburn) | Returns a data cube where cells inside the given geometry are replaced by the specified value. |
@@ -186,6 +187,7 @@ The extension provides the format `RASTER` and a set of options to control the w
 | `CREATION_OPTIONS` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the creation of the file. Read GDAL documentation for available options. |
 | `RESAMPLING` | VARCHAR | The resampling method to use when the tile size of the input data does not match the block size of the output raster. Available options are `nearest`, `bilinear`, `cubic`, `cubicspline`, `lanczos`, `average`, `mode`.... `nearest` is the default. |
 | `ENVELOPE` | DOUBLE[] | The spatial extent of the output raster in the format [xmin, ymin, xmax, ymax]. If not provided, the extent will be calculated from the input tiles. |
+| `COMPUTE_VALID_ENVELOPE` | BOOLEAN | Whether to compute the spatial extent of the output raster based on the valid (non-no-data) cells of the input tiles. If `true`, the extension will calculate the bounding box that encompasses all valid cells in the input tiles and use it as the spatial extent of the output raster. This option is useful when the input tiles have a lot of no-data cells and you want to avoid creating a raster with a large extent but mostly empty. `false` is the default, which means that the spatial extent of the output raster will be calculated based on the geometries of the input tiles, regardless of their data values. |
 | `SRS` | VARCHAR | The spatial reference system of the output raster in WKT or EPSG code format. |
 | `GEOMETRY_COLUMN` | VARCHAR | The name of the column that contains the geometry of the tiles. This column will be used to calculate the spatial extent and resolution of the output raster. It must be a column of type `GEOMETRY`. `geometry` is the default name. |
 | `DATABAND_COLUMNS` | VARCHAR[] | A list of columns that contain the data bands of the raster. These columns must be of type BLOB and have the same internal structure as the data band columns returned by `RT_Read`. |
@@ -224,6 +226,7 @@ WITH (
 	CREATION_OPTIONS ('COMPRESS=LZW'),
 	RESAMPLING 'nearest',
 	ENVELOPE [545539.750, 4724420.250, 545699.750, 4724510.250],
+	--COMPUTE_VALID_ENVELOPE true,
 	SRS 'EPSG:25830',
 	GEOMETRY_COLUMN 'geometry',
 	DATABAND_COLUMNS ['databand_3', 'databand_2', 'databand_1']
@@ -517,6 +520,7 @@ Applies a binary operation cell-by-cell between two datacubes or a datacube and 
 | `RT_CubeFill` | Returns a data cube where all cells (including no-data) are unconditionally replaced by the right-hand value. |
 | `RT_CubeMin` | Returns a data cube with each cell equal to the minimum of the two inputs. |
 | `RT_CubeMax` | Returns a data cube with each cell equal to the maximum of the two inputs. |
+| `RT_CubeNullOrEmpty` | Returns true if the data cube is null or empty, false otherwise. |
 
 The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported as aliases of the corresponding arithmetic functions.
 
@@ -594,6 +598,53 @@ FROM (
 ----
 
 ## Spatial Functions
+
+### RT_CubeBounds
+
+Computes the bounding box of the valid (non-no-data) cells in the input data cube and returns it as a geometry.
+
+The function accepts the following parameters:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `databand` | DATACUBE | The datacube column to polygonize. |
+| `tile_x` | INTEGER | The tile x coordinate of the tile. |
+| `tile_y` | INTEGER | The tile y coordinate of the tile. |
+| `blocksize_x` | INTEGER | The block size of the tile in the x direction. |
+| `blocksize_y` | INTEGER | The block size of the tile in the y direction. |
+| `geo_transform` | DOUBLE[] | The Geo Transform matrix of the tile. This is an array of 6 values representing the affine transformation coefficients. |
+
+`blocksize_x`, `blocksize_y` and `geo_transform` parameters can be extracted from the datacube `metadata` column.
+
+#### Signature
+
+```sql
+RT_CubeBounds (databand DATACUBE,
+               tile_x INTEGER,
+               tile_y INTEGER,
+               blocksize_x INTEGER,
+               blocksize_y INTEGER,
+               geo_transform DOUBLE[])
+```
+
+#### Examples
+
+```sql
+LOAD json;
+
+SELECT
+    RT_CubeBounds(databand_1,
+                  tile_x,
+                  tile_y,
+                 (metadata->>'blocksize_x')::INTEGER,
+                 (metadata->>'blocksize_y')::INTEGER,
+                 (metadata->>'transform')::DOUBLE[]) AS geometry
+FROM
+    RT_Read('path/to/raster/file.tif')
+;
+```
+
+----
 
 ### RT_CubePolygonize
 

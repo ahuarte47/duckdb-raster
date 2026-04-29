@@ -1,6 +1,7 @@
 #pragma once
 
 #include "data_types.hpp"
+#include "raster_types.hpp"
 
 // DuckDB
 #include "duckdb/common/allocator.hpp"
@@ -73,6 +74,9 @@ public:
 	//! Get the Value at the specified linear index.
 	template <typename T>
 	T GetValue(idx_t index);
+
+	//! Get the minimum and maximum column and row indices that contain valid (non-no-data) values.
+	bool GetBounds(RasterBounds &bounds);
 
 	//! Returns true if the cube has no cells, or if every cell contains the nodata value.
 	bool IsNullOrEmpty();

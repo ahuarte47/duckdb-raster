@@ -297,6 +297,29 @@ T DataCube::GetValue(idx_t index) {
 	return *reinterpret_cast<const T *>(value_ptr);
 }
 
+bool DataCube::GetBounds(RasterBounds &bounds) {
+	bounds = RasterBounds();
+	const idx_t cube_size = GetCubeSize();
+
+	if (cube_size == 0) {
+		return false;
+	}
+
+	EnsureRaw();
+
+	const data_ptr_t data_ptr = data_buffer.GetData() + sizeof(DataHeader);
+
+	for (idx_t i = 0; i < cube_size; i++) {
+		const double value = ReadValueAs<double>(header.data_type, data_ptr, i);
+
+		if (!CubeCellValue::IsNoDataValue(value, header.no_data)) {
+			RasterCoord coord = CubeCellValue::GetCoord(header.bands, header.cols, header.rows, i);
+			bounds.Grow(coord);
+		}
+	}
+	return !bounds.IsEmpty();
+}
+
 bool DataCube::IsNullOrEmpty() {
 	const idx_t cube_size = GetCubeSize();
 
@@ -477,6 +500,8 @@ void DataCube::Apply(const CubeUnaryCellFunc &func, DataCube &a, DataCube &r) {
 		// Write the result of the cell operation to the result cube.
 		if (func(a_cell_val, result)) {
 			*r_data_ptr = result;
+		} else {
+			*r_data_ptr = a_cell_val.value;
 		}
 		r_data_ptr++;
 	}
@@ -527,6 +552,8 @@ void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, D
 		// Write the result of the cell operation to the result cube.
 		if (func(a_cell_val, b_cell_val, result)) {
 			*r_data_ptr = result;
+		} else {
+			*r_data_ptr = a_cell_val.value;
 		}
 		r_data_ptr++;
 	}
@@ -563,6 +590,8 @@ void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &
 		// Write the result of the cell operation to the result cube.
 		if (func(a_cell_val, b_cell_val, result)) {
 			*r_data_ptr = result;
+		} else {
+			*r_data_ptr = a_cell_val.value;
 		}
 		r_data_ptr++;
 	}
