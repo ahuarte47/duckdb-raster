@@ -1,5 +1,7 @@
 #include "gdal_module.hpp"
+#include "function_builder.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
+#include "duckdb/function/scalar_function.hpp"
 
 // GDAL
 #include "cpl_string.h"
@@ -9,6 +11,68 @@
 #include <mutex>
 
 namespace duckdb {
+
+//======================================================================================================================
+// RT_GdalConfig
+//======================================================================================================================
+
+struct RT_GdalConfig {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Set a GDAL configuration option (equivalent to CPLSetConfigOption).
+	static void Execute(DataChunk &args, ExpressionState & /*state*/, Vector &result) {
+		D_ASSERT(args.data.size() == 2);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		for (idx_t i = 0; i < count; i++) {
+			const string key = args.data[0].GetValue(i).GetValue<string>();
+			const Value val = args.data[1].GetValue(i);
+
+			if (val.IsNull()) {
+				CPLSetConfigOption(key.c_str(), nullptr);
+			} else {
+				CPLSetConfigOption(key.c_str(), val.GetValue<string>().c_str());
+			}
+			result.SetValue(i, Value::BOOLEAN(true));
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Sets a GDAL configuration option (equivalent to CPLSetConfigOption).
+
+		Pass NULL as the value to unset the option.
+		This is useful, for example, to allow unauthenticated access to public S3 buckets
+		when using GDAL-native VSI paths:
+
+		SELECT RT_GdalConfig('AWS_NO_SIGN_REQUEST', 'YES');
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT RT_GdalConfig('AWS_NO_SIGN_REQUEST', 'YES');
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "scalar");
+
+		const ScalarFunction func("RT_GdalConfig", {LogicalType::VARCHAR, LogicalType::VARCHAR}, LogicalType::BOOLEAN,
+		                          Execute);
+
+		RegisterFunction<ScalarFunction>(loader, func, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE, tags);
+	}
+};
 
 void GdalModule::Register(ExtensionLoader &loader) {
 	// Load GDAL (once)
@@ -56,6 +120,9 @@ void GdalModule::Register(ExtensionLoader &loader) {
 			}
 		});
 	});
+
+	// Register GDAL utility functions
+	RT_GdalConfig::Register(loader);
 }
 
 } // namespace duckdb

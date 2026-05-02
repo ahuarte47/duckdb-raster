@@ -20,6 +20,7 @@
 | [`RT_Cube<UnaryOp>`](#rt_cubeunaryop) | Applies an unary operation to the values in the datacube element-wise. |
 | [`RT_Cube<BinaryOp>`](#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
 | [`RT_CubeStats`](#rt_cubestats) | Calculates statistics for a specific band of a data cube. |
+| [`RT_GdalConfig`](#rt_gdalconfig) | Sets a GDAL configuration option (equivalent to CPLSetConfigOption). |
 
 **[Spatial Functions](#spatial-functions)**
 
@@ -593,6 +594,35 @@ FROM (
     SELECT RT_CubeStats(databand_1, 0) AS stats
     FROM RT_Read('path/to/raster/file.tif')
 );
+```
+
+----
+
+### RT_GdalConfig
+
+Sets a GDAL configuration option (equivalent to CPLSetConfigOption).
+
+Pass NULL as the value to unset the option.
+This is useful, for example, to allow unauthenticated access to public S3 buckets
+when using GDAL-native VSI paths:
+
+Function accepts the following parameters:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `key` | VARCHAR | The GDAL configuration option key. |
+| `value` | VARCHAR | The value to set for the configuration option. Pass NULL to unset the option. |
+
+#### Signature
+
+```sql
+RT_GdalConfig (key VARCHAR, value VARCHAR)
+```
+
+#### Examples
+
+```sql
+SELECT RT_GdalConfig('AWS_NO_SIGN_REQUEST', 'YES');
 ```
 
 ----

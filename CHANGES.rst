@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+0.9.0
+++++++++++++++++++
+
+- Support for DuckDB FileSystem API to read remote files (e.g. S3, GCS, Azure).
+
 0.8.0
 ++++++++++++++++++
 

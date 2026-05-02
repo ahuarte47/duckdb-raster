@@ -69,7 +69,8 @@ The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported.
 
 ```sql
 SELECT short_name, long_name, help_url FROM RT_Drivers();
-
+```
+```sql
 ┌────────────────┬──────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────┐
 │   short_name   │                        long_name                         │                      help_url                       │
 │    varchar     │                         varchar                          │                       varchar                       │
@@ -90,7 +91,8 @@ SELECT short_name, long_name, help_url FROM RT_Drivers();
 
 ```sql
 SELECT * FROM RT_Read('path/to/raster/file.tif');
-
+```
+```sql
 ┌───────┬───────────┬────────────┬────────────────────────────────┬─────────────────────────┬───────┬────────┬────────┬───────┬───────┬────────────┬────────────┐
 │  id   │     x     │     y      │              bbox              │        geometry         │ level │ tile_x │ tile_y │ cols  │ rows  │  metadata  │ databand_1 │
 │ int64 │  double   │   double   │ struct(xmin, ymin, xmax, ymax) │ geometry('epsg:25830')  │ int32 │ int32  │ int32  │ int32 │ int32 │    JSON    │    BLOB    │
@@ -203,12 +205,6 @@ FROM
 ```
 
 For the full function reference and all available options, see [docs/functions.md](docs/functions.md).
-
-## TODO
-
-This is the list of things I have in mind for the future, but if you want to contribute or have any suggestion please let me know!
-
-+ Integration with DuckDB File System.
 
 ## How do I build it?
 

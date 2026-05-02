@@ -1,5 +1,5 @@
 # name: test/sql/rt_read.test
-# description: test spatial_raster extension
+# description: test raster extension
 # group: [sql]
 
 require raster

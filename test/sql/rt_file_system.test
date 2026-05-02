@@ -1,0 +1,42 @@
+# name: test/sql/rt_file_system.test
+# description: test raster extension
+# group: [sql]
+
+require raster
+
+statement ok
+INSTALL httpfs;
+
+statement ok
+LOAD httpfs;
+
+statement ok
+SELECT RT_GdalConfig('AWS_NO_SIGN_REQUEST', 'YES');
+
+query IIIIII
+SELECT
+    id, x, y, cols, rows, bbox
+FROM
+    RT_Read('/vsis3/sentinel-cogs/sentinel-s2-l2a-cogs/30/T/WN/2021/9/S2B_30TWN_20210930_0_L2A/B02.tif')
+LIMIT 5
+;
+----
+0	505100.0	4794880.0	1024	1024	{'xmin': 499980.0, 'ymin': 4789760.0, 'xmax': 510220.0, 'ymax': 4800000.0}
+1	515340.0	4794880.0	1024	1024	{'xmin': 510220.0, 'ymin': 4789760.0, 'xmax': 520460.0, 'ymax': 4800000.0}
+2	525580.0	4794880.0	1024	1024	{'xmin': 520460.0, 'ymin': 4789760.0, 'xmax': 530700.0, 'ymax': 4800000.0}
+3	535820.0	4794880.0	1024	1024	{'xmin': 530700.0, 'ymin': 4789760.0, 'xmax': 540940.0, 'ymax': 4800000.0}
+4	546060.0	4794880.0	1024	1024	{'xmin': 540940.0, 'ymin': 4789760.0, 'xmax': 551180.0, 'ymax': 4800000.0}
+
+query IIIIII
+SELECT
+    id, x, y, cols, rows, bbox
+FROM
+    RT_Read('s3://sentinel-cogs/sentinel-s2-l2a-cogs/30/T/WN/2021/9/S2B_30TWN_20210930_0_L2A/B02.tif')
+LIMIT 5
+;
+----
+0	505100.0	4794880.0	1024	1024	{'xmin': 499980.0, 'ymin': 4789760.0, 'xmax': 510220.0, 'ymax': 4800000.0}
+1	515340.0	4794880.0	1024	1024	{'xmin': 510220.0, 'ymin': 4789760.0, 'xmax': 520460.0, 'ymax': 4800000.0}
+2	525580.0	4794880.0	1024	1024	{'xmin': 520460.0, 'ymin': 4789760.0, 'xmax': 530700.0, 'ymax': 4800000.0}
+3	535820.0	4794880.0	1024	1024	{'xmin': 530700.0, 'ymin': 4789760.0, 'xmax': 540940.0, 'ymax': 4800000.0}
+4	546060.0	4794880.0	1024	1024	{'xmin': 540940.0, 'ymin': 4789760.0, 'xmax': 551180.0, 'ymax': 4800000.0}

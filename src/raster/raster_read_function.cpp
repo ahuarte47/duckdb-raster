@@ -27,6 +27,7 @@
 // GDAL
 #include "gdal_priv.h"
 #include "gdal_utils.h"
+#include "gdal_file_system.hpp"
 
 namespace duckdb {
 
@@ -35,6 +36,21 @@ namespace {
 //======================================================================================================================
 // Utilities
 //======================================================================================================================
+
+//! Resolve a file path into a GDAL-accessible path.
+static std::string GdalFilePath(const std::string &file_path, ClientContext &context) {
+	// Remote paths are routed through DuckDB's custom VSI handler by prepending the registered
+	// DuckDBFileSystemPrefix, so that GDAL I/O calls are transparently forwarded to DuckDB's
+	// own file system (e.g. HTTP, S3, Azure, ...).
+	// Other paths are returned unchanged for GDAL to handle them directly.
+	if (FileSystem::IsRemoteFile(file_path)) {
+		const auto &file_prefix = DuckDBFileSystemPrefix::GetOrCreate(context);
+		const auto prefixed_path = file_prefix.AddPrefix(file_path);
+		RASTER_SCAN_DEBUG_LOG(1, "Prefix remote file path: '%s' to '%s'", file_path.c_str(), prefixed_path.c_str());
+		return prefixed_path;
+	}
+	return file_path;
+}
 
 //! Convert a named parameter map to an array suitable for passing to GDAL functions.
 static std::vector<char const *> NamedParametersAsVector(const named_parameter_map_t &input,
@@ -47,6 +63,24 @@ static std::vector<char const *> NamedParametersAsVector(const named_parameter_m
 
 		for (auto &param : ListValue::GetChildren(input_param->second)) {
 			output.push_back(StringValue::Get(param).c_str());
+		}
+		output.push_back(nullptr);
+	}
+	return output;
+}
+
+//! Convert a fileset parameter map to an array suitable for passing to GDAL functions.
+static std::vector<char const *> FilesetParametersAsVector(const named_parameter_map_t &input,
+                                                           const std::string &keyname, ClientContext &context) {
+	auto output = std::vector<char const *>();
+
+	auto input_param = input.find(keyname);
+	if (input_param != input.end()) {
+		output.reserve(input.size() + 1);
+
+		for (auto &param : ListValue::GetChildren(input_param->second)) {
+			const auto file_path = StringValue::Get(param);
+			output.push_back(GdalFilePath(file_path, context).c_str());
 		}
 		output.push_back(nullptr);
 	}
@@ -100,8 +134,8 @@ struct RT_Read {
 	                                               vector<LogicalType> &return_types, vector<string> &names) {
 		std::vector<std::string> file_names;
 
-		const auto file_path = input.inputs[0].GetValue<string>();
-		file_names.push_back(file_path);
+		const auto file_path = input.inputs[0].GetValue<std::string>();
+		file_names.push_back(GdalFilePath(file_path, context));
 
 		return Bind(context, input, return_types, names, file_names);
 	}
@@ -117,7 +151,8 @@ struct RT_Read {
 			throw InvalidInputException("Expected a list of file paths for the first argument");
 		}
 		for (const auto &child : ListValue::GetChildren(input.inputs[0])) {
-			file_names.push_back(StringValue::Get(child));
+			const auto file_path = StringValue::Get(child);
+			file_names.push_back(GdalFilePath(file_path, context));
 		}
 		return Bind(context, input, return_types, names, file_names);
 	}
@@ -155,7 +190,7 @@ struct RT_Read {
 
 			const auto gdal_options = NamedParametersAsVector(params, "open_options");
 			const auto gdal_drivers = NamedParametersAsVector(params, "allowed_drivers");
-			const auto gdal_sibling = NamedParametersAsVector(params, "sibling_files");
+			const auto gdal_sibling = FilesetParametersAsVector(params, "sibling_files", context);
 
 			dataset = GDALDatasetUniquePtr(GDALDataset::Open(file_path.c_str(), GDAL_OF_RASTER | GDAL_OF_VERBOSE_ERROR,
 			                                                 gdal_drivers.empty() ? nullptr : gdal_drivers.data(),
