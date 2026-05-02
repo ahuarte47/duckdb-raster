@@ -75,12 +75,12 @@ SELECT count(*), ST_Area(ST_Union_Agg(geometry)) FROM __dataset;
 query I
 SELECT
     ST_Area(
-        RT_CubePolygonize(databand_1,
-                          tile_x,
-                          tile_y,
-                         (metadata->>'blocksize_x')::INTEGER,
-                         (metadata->>'blocksize_y')::INTEGER,
-                         (metadata->>'transform')::DOUBLE[]
+        RT_Polygon(databand_1,
+                   tile_x,
+                   tile_y,
+                  (metadata->>'blocksize_x')::INTEGER,
+                  (metadata->>'blocksize_y')::INTEGER,
+                  (metadata->>'transform')::DOUBLE[]
         )
     )
 FROM
@@ -114,12 +114,12 @@ __dataset AS (
 )
 SELECT
     ST_Area(
-        RT_CubePolygonize(databand_1,
-                          tile_x,
-                          tile_y,
-                         (metadata->>'blocksize_x')::INTEGER,
-                         (metadata->>'blocksize_y')::INTEGER,
-                         (metadata->>'transform')::DOUBLE[]
+        RT_Polygon(databand_1,
+                   tile_x,
+                   tile_y,
+                  (metadata->>'blocksize_x')::INTEGER,
+                  (metadata->>'blocksize_y')::INTEGER,
+                  (metadata->>'transform')::DOUBLE[]
         )
     )
 FROM
@@ -159,12 +159,12 @@ COPY (
             ST_Intersects(__clip_layer.geom, geometry)
     )
     SELECT
-        RT_CubePolygonize(databand_1,
-                          tile_x,
-                          tile_y,
-                         (metadata->>'blocksize_x')::INTEGER,
-                         (metadata->>'blocksize_y')::INTEGER,
-                         (metadata->>'transform')::DOUBLE[]) AS geometry,
+        RT_Polygon(databand_1,
+                   tile_x,
+                   tile_y,
+                  (metadata->>'blocksize_x')::INTEGER,
+                  (metadata->>'blocksize_y')::INTEGER,
+                  (metadata->>'transform')::DOUBLE[]) AS geometry,
         * EXCLUDE(geometry, databand_1)
     FROM
         __dataset
@@ -220,12 +220,12 @@ COPY (
             __dataset
     )
     SELECT
-        RT_CubePolygonize(databand_C,
-                          tile_x,
-                          tile_y,
-                         (metadata->>'blocksize_x')::INTEGER,
-                         (metadata->>'blocksize_y')::INTEGER,
-                         (metadata->>'transform')::DOUBLE[]) AS geometry_C,
+        RT_Polygon(databand_C,
+                   tile_x,
+                   tile_y,
+                  (metadata->>'blocksize_x')::INTEGER,
+                  (metadata->>'blocksize_y')::INTEGER,
+                  (metadata->>'transform')::DOUBLE[]) AS geometry_C,
         * EXCLUDE(geometry, geom, databand_C)
     FROM
         __clipped
@@ -404,12 +404,12 @@ COPY (
             __dataset
     )
     SELECT
-        RT_CubeBounds(databand_C,
-                      tile_x,
-                      tile_y,
-                     (metadata->>'blocksize_x')::INTEGER,
-                     (metadata->>'blocksize_y')::INTEGER,
-                     (metadata->>'transform')::DOUBLE[]) AS geometry
+        RT_Envelope(databand_C,
+                    tile_x,
+                    tile_y,
+                   (metadata->>'blocksize_x')::INTEGER,
+                   (metadata->>'blocksize_y')::INTEGER,
+                   (metadata->>'transform')::DOUBLE[]) AS geometry
     FROM
         __clipped
 )

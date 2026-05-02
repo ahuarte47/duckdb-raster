@@ -86,16 +86,16 @@ static GEOSGeometry *CreatePolygon(GEOSContextHandle_t geos_ctx, const Point2D p
 }
 
 //======================================================================================================================
-// RT_Bounds
+// RT_Envelope
 //======================================================================================================================
 
-struct RT_Bounds {
+struct RT_Envelope {
 	//------------------------------------------------------------------------------------------------------------------
-	// Function
+	// Execute
 	//------------------------------------------------------------------------------------------------------------------
 
 	//! Compute the bounding box of the valid (non-no-data) cells in the input data cube and return it as a geometry.
-	static void Bounds(DataChunk &args, ExpressionState &state, Vector &result) {
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -154,12 +154,12 @@ struct RT_Bounds {
 
 	static constexpr auto EXAMPLE = R"(
 		SELECT
-			RT_CubeBounds(databand_1,
-                          tile_x,
-                          tile_y,
-                         (metadata->>'blocksize_x')::INTEGER,
-                         (metadata->>'blocksize_y')::INTEGER,
-                         (metadata->>'transform')::DOUBLE[])
+			RT_Envelope(databand_1,
+                        tile_x,
+                        tile_y,
+                       (metadata->>'blocksize_x')::INTEGER,
+                       (metadata->>'blocksize_y')::INTEGER,
+                       (metadata->>'transform')::DOUBLE[])
 		FROM
 			my_raster_table
 		;
@@ -174,10 +174,10 @@ struct RT_Bounds {
 		tags.insert("ext", "raster");
 		tags.insert("category", "spatial");
 
-		ScalarFunction function("RT_CubeBounds",
+		ScalarFunction function("RT_Envelope",
 		                        {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
 		                         LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::LIST(LogicalType::DOUBLE)},
-		                        LogicalType::GEOMETRY(), Bounds, nullptr, nullptr, nullptr);
+		                        LogicalType::GEOMETRY(), Execute, nullptr, nullptr, nullptr);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
 		                                 tags);
@@ -185,10 +185,10 @@ struct RT_Bounds {
 };
 
 //======================================================================================================================
-// RT_Polygonize
+// RT_Polygon
 //======================================================================================================================
 
-struct RT_Polygonize {
+struct RT_Polygon {
 	//------------------------------------------------------------------------------------------------------------------
 	// Init Local
 	//------------------------------------------------------------------------------------------------------------------
@@ -199,7 +199,7 @@ struct RT_Polygonize {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
-	// Function
+	// Execute
 	//------------------------------------------------------------------------------------------------------------------
 
 	struct RasterCoordHash {
@@ -214,7 +214,7 @@ struct RT_Polygonize {
 	};
 
 	//! Create a polygon geometry for each contiguous region of non-no-data values in the data cube.
-	static void Polygonize(DataChunk &args, ExpressionState &state, Vector &result) {
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -387,12 +387,12 @@ struct RT_Polygonize {
 
 	static constexpr auto EXAMPLE = R"(
 		SELECT
-			RT_CubePolygonize(databand_1,
-							  tile_x,
-							  tile_y,
-							 (metadata->>'blocksize_x')::INTEGER,
-							 (metadata->>'blocksize_y')::INTEGER,
-							 (metadata->>'transform')::DOUBLE[])
+            RT_Polygon(databand_1,
+                       tile_x,
+                       tile_y,
+                      (metadata->>'blocksize_x')::INTEGER,
+                      (metadata->>'blocksize_y')::INTEGER,
+                      (metadata->>'transform')::DOUBLE[])
 		FROM
 			my_raster_table
 		;
@@ -407,10 +407,10 @@ struct RT_Polygonize {
 		tags.insert("ext", "raster");
 		tags.insert("category", "spatial");
 
-		ScalarFunction function("RT_CubePolygonize",
+		ScalarFunction function("RT_Polygon",
 		                        {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
 		                         LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::LIST(LogicalType::DOUBLE)},
-		                        LogicalType::GEOMETRY(), Polygonize, nullptr, nullptr, nullptr, InitLocal);
+		                        LogicalType::GEOMETRY(), Execute, nullptr, nullptr, nullptr, InitLocal);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
 		                                 tags);
@@ -621,8 +621,8 @@ struct RT_SpatialOp {
 
 void RasterSpatialFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
-	RT_Bounds::Register(loader);
-	RT_Polygonize::Register(loader);
+	RT_Envelope::Register(loader);
+	RT_Polygon::Register(loader);
 	RT_SpatialOp::Register(loader);
 }
 

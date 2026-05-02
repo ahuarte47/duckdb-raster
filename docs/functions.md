@@ -26,8 +26,8 @@
 
 | Function | Summary |
 | --- | --- |
-| [`RT_CubeBounds`](#rt_cubebounds) | Computes the bounding box of the valid (non-no-data) cells in the input data cube and returns it as a geometry. |
-| [`RT_CubePolygonize`](#rt_cubepolygonize) | Creates a polygon geometry for each contiguous region of non-no-data values in the data cube. |
+| [`RT_Envelope`](#rt_envelope) | Computes the bounding box of the valid (non-no-data) cells in the input data cube and returns it as a geometry. |
+| [`RT_Polygon`](#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values in the data cube. |
 | [`RT_CubeClip`](#rt_cubeclip) | Returns a data cube where cells outside the given geometry are replaced by the specified value. |
 | [`RT_CubeBurn`](#rt_cubeburn) | Returns a data cube where cells inside the given geometry are replaced by the specified value. |
 
@@ -629,7 +629,7 @@ SELECT RT_GdalConfig('AWS_NO_SIGN_REQUEST', 'YES');
 
 ## Spatial Functions
 
-### RT_CubeBounds
+### RT_Envelope
 
 Computes the bounding box of the valid (non-no-data) cells in the input data cube and returns it as a geometry.
 
@@ -649,12 +649,12 @@ The function accepts the following parameters:
 #### Signature
 
 ```sql
-RT_CubeBounds (databand DATACUBE,
-               tile_x INTEGER,
-               tile_y INTEGER,
-               blocksize_x INTEGER,
-               blocksize_y INTEGER,
-               geo_transform DOUBLE[])
+RT_Envelope (databand DATACUBE,
+             tile_x INTEGER,
+             tile_y INTEGER,
+             blocksize_x INTEGER,
+             blocksize_y INTEGER,
+             geo_transform DOUBLE[])
 ```
 
 #### Examples
@@ -663,12 +663,12 @@ RT_CubeBounds (databand DATACUBE,
 LOAD json;
 
 SELECT
-    RT_CubeBounds(databand_1,
-                  tile_x,
-                  tile_y,
-                 (metadata->>'blocksize_x')::INTEGER,
-                 (metadata->>'blocksize_y')::INTEGER,
-                 (metadata->>'transform')::DOUBLE[]) AS geometry
+    RT_Envelope(databand_1,
+                tile_x,
+                tile_y,
+               (metadata->>'blocksize_x')::INTEGER,
+               (metadata->>'blocksize_y')::INTEGER,
+               (metadata->>'transform')::DOUBLE[]) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
@@ -676,7 +676,7 @@ FROM
 
 ----
 
-### RT_CubePolygonize
+### RT_Polygon
 
 Creates a polygon geometry for each contiguous region of non-no-data values in the data cube.
 
@@ -698,12 +698,12 @@ The function accepts the following parameters:
 #### Signature
 
 ```sql
-RT_CubePolygonize (databand DATACUBE,
-                   tile_x INTEGER,
-                   tile_y INTEGER,
-                   blocksize_x INTEGER,
-                   blocksize_y INTEGER,
-                   geo_transform DOUBLE[])
+RT_Polygon (databand DATACUBE,
+            tile_x INTEGER,
+            tile_y INTEGER,
+            blocksize_x INTEGER,
+            blocksize_y INTEGER,
+            geo_transform DOUBLE[])
 ```
 
 #### Examples
@@ -712,12 +712,12 @@ RT_CubePolygonize (databand DATACUBE,
 LOAD json;
 
 SELECT
-    RT_CubePolygonize(databand_1,
-                      tile_x,
-                      tile_y,
-                     (metadata->>'blocksize_x')::INTEGER,
-                     (metadata->>'blocksize_y')::INTEGER,
-                     (metadata->>'transform')::DOUBLE[]) AS geometry
+    RT_Polygon(databand_1,
+               tile_x,
+               tile_y,
+              (metadata->>'blocksize_x')::INTEGER,
+              (metadata->>'blocksize_y')::INTEGER,
+              (metadata->>'transform')::DOUBLE[]) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
 ;

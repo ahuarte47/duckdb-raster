@@ -53,6 +53,7 @@ After loading the extension, you can read and write raster files using SQL.
 | [`RT_Cube<BinaryOp>`](docs/functions.md#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
 | [`RT_Cube<UnaryOp>`](docs/functions.md#rt_cubeunaryop) | Applies a unary operation to the values in the datacube element-wise. |
 | [`RT_CubeStats`](docs/functions.md#rt_cubestats) | Calculates statistics for a specific band of a data cube. |
+| [`RT_GdalConfig`](docs/functions.md#rt_gdalconfig) | Sets a GDAL configuration option (equivalent to CPLSetConfigOption). |
 
 The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported.
 
@@ -60,8 +61,8 @@ The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported.
 
 | Function | Summary |
 | --- | --- |
-| [`RT_CubeBounds`](docs/functions.md#rt_cubebounds) | Computes the bounding box of the valid (non-no-data) cells in the input data cube and returns it as a geometry. |
-| [`RT_CubePolygonize`](docs/functions.md#rt_cubepolygonize) | Creates a polygon geometry for each contiguous region of non-no-data values in the data cube. |
+| [`RT_Envelope`](docs/functions.md#rt_envelope) | Computes the bounding box of the valid (non-no-data) cells in the input data cube and returns it as a geometry. |
+| [`RT_Polygon`](docs/functions.md#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values in the data cube. |
 | [`RT_CubeClip`](docs/functions.md#rt_cubeclip) | Returns a data cube where cells outside the given geometry are replaced by the specified value. |
 | [`RT_CubeBurn`](docs/functions.md#rt_cubeburn) | Returns a data cube where cells inside the given geometry are replaced by the specified value. |
 
@@ -137,12 +138,12 @@ WHERE
 LOAD json;
 -- Create a polygon geometry for each contiguous region of non-no-data values in the data cube.
 SELECT
-    RT_CubePolygonize(databand_1,
-                      tile_x,
-                      tile_y,
-                     (metadata->>'blocksize_x')::INTEGER,
-                     (metadata->>'blocksize_y')::INTEGER,
-                     (metadata->>'transform')::DOUBLE[]) AS geometry
+    RT_Polygon(databand_1,
+               tile_x,
+               tile_y,
+              (metadata->>'blocksize_x')::INTEGER,
+              (metadata->>'blocksize_y')::INTEGER,
+              (metadata->>'transform')::DOUBLE[]) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
