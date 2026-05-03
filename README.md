@@ -1,9 +1,5 @@
 # DuckDB Raster Extension
 
-🚧 WORK IN PROGRESS 🚧
-
-## What is this?
-
 A DuckDB extension for reading and writing geospatial raster data using SQL.
 
 It exposes raster files (e.g. GeoTIFF, COG, VRT) as standard DuckDB tables, with one row per tile and one datacube column per band. You can filter, transform, and aggregate raster data using plain SQL, and write results back to any GDAL-supported raster format.

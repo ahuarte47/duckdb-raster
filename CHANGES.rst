@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+1.0.0
+++++++++++++++++++
+
+- Initial release of DuckDB Raster Extension for the community.
+
 0.9.0
 ++++++++++++++++++
 
