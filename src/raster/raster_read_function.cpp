@@ -893,26 +893,32 @@ struct RT_Read {
 
 	    | Parameter | Type | Description |
 	    | --------- | -----| ----------- |
-	    | `path` | VARCHAR | The path to the file to read. Mandatory |
-	    | `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. |
-	    | `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. |
-	    | `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. |
+	    | `path` | VARCHAR | The path to the file to read. Mandatory. |
+	    | `open_options` | VARCHAR[] | Key-value pairs passed to the GDAL driver. Single-file only. |
+	    | `allowed_drivers` | VARCHAR[] | GDAL driver names allowed to open the file. Single-file only. |
+	    | `sibling_files` | VARCHAR[] | Sibling files required to open the file. Single-file only. |
+	    | `separate_bands` | BOOLEAN | When `true`, each input file becomes its own band in the VRT dataset. Multi-file only. `false` is the default. |
+	    | `data_format` | VARCHAR | Compression format for the pixel data BLOB. `RAW` (uncompressed) is the default. |
+	    | `blocksize_x` | INTEGER | Override the tile width in pixels. |
+	    | `blocksize_y` | INTEGER | Override the tile height in pixels. |
+	    | `skip_empty_tiles` | BOOLEAN | When `true`, tiles with no data are omitted. `true` is the default. |
+	    | `datacube` | BOOLEAN | When `true`, all bands are merged into a single `datacube` column. `false` is the default. |
 
-	    Note that GDAL is single-threaded, so this table function will not be able to make full use of parallelism.
+	    Note that GDAL is single-threaded, so this table function cannot fully exploit DuckDB parallelism.
 
-	    By using `RT_Read`, the spatial extension also provides “replacement scans” for common geospatial file formats, allowing you to query files of these formats as if they were tables directly.
+	    The raster extension also provides "replacement scans" for common raster file formats, allowing you to query these files as if they were tables:
 
 	    ```sql
-	    SELECT * FROM './path/to/some/shapefile/dataset.tif';
+	    SELECT * FROM './path/to/some/file.tif';
 	    ```
 
-	    In practice this is just syntax-sugar for calling RT_Read, so there is no difference in performance. If you want to pass additional options, you should use the RT_Read table function directly.
+	    This is syntax sugar for `RT_Read`. To pass additional options, use `RT_Read` directly.
 
-	    The following formats are currently recognized by their file extension:
+	    The following formats are recognised by their file extension:
 
 		| Format | Extension |
 		| ------ | --------- |
-		| GeoTiff COG | .tif, .tiff |
+		| GeoTIFF / COG | .tif, .tiff |
 		| Erdas Imagine | .img |
 		| GDAL Virtual | .vrt |
 	)";

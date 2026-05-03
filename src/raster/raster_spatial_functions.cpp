@@ -144,24 +144,25 @@ struct RT_Envelope {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Computes the bounding box of the valid (non-no-data) cells in the input data cube and
+		Computes the bounding box of the valid (non-nodata) cells in the input datacube and
 		returns it as a geometry.
 
-		The fourth argument is a list of 6 doubles: [originX, pixelWidth, rotX, originY, rotY, pixelHeight],
-		it represents the geo_transform of the input data cube, which is used to convert pixel coordinates to
-		spatial coordinates.
+		The `geo_transform` argument is an array of 6 doubles [originX, pixelWidth, rotX, originY, rotY, pixelHeight]
+		representing the affine geotransform of the tile, used to convert pixel coordinates to spatial coordinates.
+		These values can be extracted from the `metadata` column returned by `RT_Read`.
 	)";
 
 	static constexpr auto EXAMPLE = R"(
+		LOAD json;
 		SELECT
 			RT_Envelope(databand_1,
                         tile_x,
                         tile_y,
-                       (metadata->>'blocksize_x')::INTEGER,
-                       (metadata->>'blocksize_y')::INTEGER,
-                       (metadata->>'transform')::DOUBLE[])
+                       (metadata->'blocksize_x')::INTEGER,
+                       (metadata->'blocksize_y')::INTEGER,
+                       (metadata->'transform')::DOUBLE[])
 		FROM
-			my_raster_table
+			RT_Read('path/to/raster/file.tif')
 		;
 	)";
 
@@ -378,23 +379,24 @@ struct RT_Polygon {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Creates a polygon geometry for each contiguous region of non-no-data values in the data cube.
+		Vectorizes a datacube by creating a polygon geometry for each contiguous region of non-nodata values.
 
-		The fourth argument is a list of 6 doubles: [originX, pixelWidth, rotX, originY, rotY, pixelHeight],
-		it represents the geo_transform of the input data cube, which is used to convert pixel coordinates to
-		spatial coordinates.
+		The `geo_transform` argument is an array of 6 doubles [originX, pixelWidth, rotX, originY, rotY, pixelHeight]
+		representing the affine geotransform of the tile, used to convert pixel coordinates to spatial coordinates.
+		These values can be extracted from the `metadata` column returned by `RT_Read`.
 	)";
 
 	static constexpr auto EXAMPLE = R"(
+		LOAD json;
 		SELECT
             RT_Polygon(databand_1,
                        tile_x,
                        tile_y,
-                      (metadata->>'blocksize_x')::INTEGER,
-                      (metadata->>'blocksize_y')::INTEGER,
-                      (metadata->>'transform')::DOUBLE[])
+                      (metadata->'blocksize_x')::INTEGER,
+                      (metadata->'blocksize_y')::INTEGER,
+                      (metadata->'transform')::DOUBLE[])
 		FROM
-			my_raster_table
+			RT_Read('path/to/raster/file.tif')
 		;
 	)";
 
@@ -586,11 +588,11 @@ struct RT_SpatialOp {
 
 		static constexpr std::array<std::tuple<const char *, SpatialOp, const char *>, 2> spatial_ops = {{
 		    {"RT_CubeClip", SpatialOp::CLIP,
-		     "Returns a data cube where cells outside the given geometry are replaced by the specified value. "
-		     "Cells inside the geometry are preserved. No-data cells are preserved."},
+		     "Returns a datacube where cells outside the given geometry are replaced by the specified value. "
+		     "Cells inside the geometry are preserved. Nodata cells are preserved."},
 		    {"RT_CubeBurn", SpatialOp::BURN,
-		     "Returns a data cube where cells inside the given geometry are replaced by the specified value. "
-		     "Cells outside the geometry are preserved. No-data cells are preserved."},
+		     "Returns a datacube where cells inside the given geometry are replaced by the specified value. "
+		     "Cells outside the geometry are preserved. Nodata cells are preserved."},
 		}};
 		for (const auto &entry : spatial_ops) {
 			const auto &function_name = std::get<0>(entry);

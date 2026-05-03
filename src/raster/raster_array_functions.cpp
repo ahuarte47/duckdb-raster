@@ -42,14 +42,13 @@ struct RT_Cube2Array {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Transforms a BLOB data band into an ARRAY of values.
+		Extracts the pixel values of a datacube column into a plain SQL array of a chosen numeric type.
 
-		The BLOB is expected to contain the raw data of a raster tile, along with its metadata (e.g. dimensions,
-		data type, nodata value). The function reads the BLOB, extracts the metadata, and converts the raw tile data
-		into an ARRAY of values that can be easily queried and manipulated in DuckDB.
+		The datacube BLOB encodes the raw pixel data of a raster tile together with its metadata
+		(dimensions, data type, nodata value). The function reads that metadata and converts the
+		pixel data into a flat SQL array.
 
-		If the `filter_nodata` parameter is set to true, any values in the tile that match the nodata value will be
-		filtered out from the resulting ARRAY.
+		When `filter_nodata` is `true`, cells matching the nodata sentinel are excluded from the output array.
 	)";
 
 	static constexpr auto EXAMPLE = R"(
@@ -131,20 +130,17 @@ struct RT_Array2Cube {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Transforms an ARRAY of values into a BLOB data band.
+		Packages a plain SQL array of numeric values back into a datacube BLOB, the inverse of `RT_Cube2Array`.
 
-		The function takes an ARRAY of values representing a raster tile, along with metadata parameters (e.g. dimensions,
-		data format, nodata value), and converts them into a BLOB that encodes the raw tile data and its metadata.
+		The function takes a flat array of pixel values plus tile metadata and encodes them into the datacube
+		BLOB format expected by `COPY ... FORMAT RASTER` and the other `RT_Cube*` functions.
 
-		The resulting BLOB can be stored in a DuckDB table and later transformed back into an ARRAY using the
-		RT_Cube2Array function.
-
-		The parameters are as follows:
-		- `data_format`: The data format to pack the values in the array (e.g. 'RAW').
-		- `bands`: The number of bands or layers in the raster tile.
-		- `cols`: The number of columns in the tile.
-		- `rows`: The number of rows in the tile.
-		- `nodata_value`: A numeric value representing the no-data value for the tile.
+		Parameters:
+		- `data_format`: Compression format for the pixel data (e.g. 'RAW').
+		- `bands`: Number of bands in the tile.
+		- `cols`: Number of pixel columns.
+		- `rows`: Number of pixel rows.
+		- `no_data`: Nodata sentinel value for the tile.
 	)";
 
 	static constexpr auto EXAMPLE = R"(

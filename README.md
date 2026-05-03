@@ -4,14 +4,15 @@
 
 ## What is this?
 
-This is an extension for DuckDB for reading and writing raster files data using SQL.
+A DuckDB extension for reading and writing geospatial raster data using SQL.
 
-It provides functions to read raster files (e.g. GeoTIFF) and return the data as a table, and to write tables back to
-raster files, as well as a set of functions or operators to manipulate the raster data.
+It exposes raster files (e.g. GeoTIFF, COG, VRT) as standard DuckDB tables, with one row per tile and one datacube column per band. You can filter, transform, and aggregate raster data using plain SQL, and write results back to any GDAL-supported raster format.
 
 ```sql
+-- Compute NDVI from red (band 1) and NIR (band 2) directly in SQL
 SELECT
-	geometry, (databand_1 - databand_2) / (databand_1 + databand_2) AS ndvi
+	geometry,
+	(databand_2 - databand_1) / (databand_2 + databand_1) AS ndvi
 FROM
 	RT_Read('path/to/raster/file.tif')
 ;
@@ -31,9 +32,7 @@ INSTALL raster FROM community;
 LOAD raster;
 ```
 
-## Functions reference
-
-After loading the extension, you can read and write raster files using SQL.
+## Function Reference
 
 **[Table Functions](docs/functions.md#table-functions)**
 
@@ -41,38 +40,34 @@ After loading the extension, you can read and write raster files using SQL.
 | --- | --- |
 | [`RT_Drivers`](docs/functions.md#rt_drivers) | Returns the list of supported GDAL raster drivers and file formats. |
 | [`RT_Read`](docs/functions.md#rt_read) | Reads a raster file (or a mosaic of raster files) and returns a table with the raster data. |
-| [`COPY TO`](docs/functions.md#rt_write) | Exports a data table to a new raster file. |
+| [`RT_Write`](docs/functions.md#rt_write) | (`COPY TO`) Exports a data table to a new raster file. |
 
 **[Scalar Functions](docs/functions.md#scalar-functions)**
 
 | Function | Summary |
 | --- | --- |
-| [`RT_Array2Cube`](docs/functions.md#rt_array2cube) | Transforms an array of numeric values into a datacube column. |
-| [`RT_Cube2Array`](docs/functions.md#rt_cube2array) | Transforms a datacube column into an array of a numeric data type. |
-| [`RT_Cube2Type`](docs/functions.md#rt_cube2type) | Transforms a datacube column into another data type. |
-| [`RT_Cube<BinaryOp>`](docs/functions.md#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
-| [`RT_Cube<UnaryOp>`](docs/functions.md#rt_cubeunaryop) | Applies a unary operation to the values in the datacube element-wise. |
-| [`RT_CubeStats`](docs/functions.md#rt_cubestats) | Calculates statistics for a specific band of a data cube. |
-| [`RT_GdalConfig`](docs/functions.md#rt_gdalconfig) | Sets a GDAL configuration option (equivalent to CPLSetConfigOption). |
-
-The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported.
+| [`RT_Cube2Array`](docs/functions.md#rt_cube2array) | Extracts pixel values from a datacube column into a plain SQL array. |
+| [`RT_Cube2Type`](docs/functions.md#rt_cube2type) | Changes the pixel data type of a datacube. |
+| [`RT_Array2Cube`](docs/functions.md#rt_array2cube) | Packages a plain SQL array back into a datacube column. |
+| [`RT_Cube<UnaryOp>`](docs/functions.md#rt_cubeunaryop) | Applies a unary operation to the datacube element-wise (`RT_CubeNeg`, `RT_CubeAbs`, …). |
+| [`RT_Cube<BinaryOp>`](docs/functions.md#rt_cubebinaryop) | Applies a binary operation between two datacubes or a datacube and a scalar. Operators `+`, `-`, `*`, `/`, `^`, `%` are also supported. |
+| [`RT_CubeStats`](docs/functions.md#rt_cubestats) | Calculates statistics (min, max, mean, stddev) for a band of a datacube. |
+| [`RT_GdalConfig`](docs/functions.md#rt_gdalconfig) | Sets a GDAL configuration option (e.g. for S3 authentication). |
 
 **[Spatial Functions](docs/functions.md#spatial-functions)**
 
 | Function | Summary |
 | --- | --- |
-| [`RT_Envelope`](docs/functions.md#rt_envelope) | Computes the bounding box of the valid (non-no-data) cells in the input data cube and returns it as a geometry. |
-| [`RT_Polygon`](docs/functions.md#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values in the data cube. |
-| [`RT_CubeClip`](docs/functions.md#rt_cubeclip) | Returns a data cube where cells outside the given geometry are replaced by the specified value. |
-| [`RT_CubeBurn`](docs/functions.md#rt_cubeburn) | Returns a data cube where cells inside the given geometry are replaced by the specified value. |
+| [`RT_Envelope`](docs/functions.md#rt_envelope) | Computes the bounding box of the valid (non-no-data) cells in the input datacube and returns it as a geometry. |
+| [`RT_Polygon`](docs/functions.md#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values in the datacube. |
+| [`RT_CubeClip`](docs/functions.md#rt_cubeclip) | Returns a datacube where cells outside the given geometry are replaced by the specified value. |
+| [`RT_CubeBurn`](docs/functions.md#rt_cubeburn) | Returns a datacube where cells inside the given geometry are replaced by the specified value. |
 
 ## Examples
 
-You can find more examples of how to use the extension in the [examples](docs/examples.md) folder, and in the [SQL tests](test/sql) that are run as part of the CI.
+More examples are available in the [examples guide](docs/examples.md) and in the [SQL tests](test/sql) used by the CI pipeline.
 
-But here are some quick examples of how to use the extension.
-
-#### Listing available drivers
+### Listing available drivers
 
 ```sql
 SELECT short_name, long_name, help_url FROM RT_Drivers();
@@ -94,7 +89,7 @@ SELECT short_name, long_name, help_url FROM RT_Drivers();
 └────────────────┴──────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────┘
 ```
 
-#### Reading a raster file (or a mosaic of raster files)
+### Reading a raster file (or a mosaic of raster files)
 
 ```sql
 SELECT * FROM RT_Read('path/to/raster/file.tif');
@@ -143,22 +138,23 @@ WHERE
 ```
 
 ```sql
+LOAD spatial;
 LOAD json;
 
--- Create a polygon geometry for each contiguous region of non-no-data values in the data cube.
+-- Vectorize valid (non-nodata) pixel regions into polygon geometries
 SELECT
     RT_Polygon(databand_1,
                tile_x,
                tile_y,
-              (metadata->>'blocksize_x')::INTEGER,
-              (metadata->>'blocksize_y')::INTEGER,
-              (metadata->>'transform')::DOUBLE[]) AS geometry
+              (metadata->'blocksize_x')::INTEGER,
+              (metadata->'blocksize_y')::INTEGER,
+              (metadata->'transform')::DOUBLE[]) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
 ```
 
-#### Writing a raster file
+### Writing a raster file
 
 ```sql
 COPY (
@@ -173,15 +169,15 @@ WITH (
 	DRIVER 'COG',
 	CREATION_OPTIONS ('COMPRESS=LZW'),
 	RESAMPLING 'nearest',
-	ENVELOPE [545539.750, 4724420.250, 545699.750, 4724510.250],
-	--COMPUTE_VALID_ENVELOPE true,
+	-- ENVELOPE [545539.750, 4724420.250, 545699.750, 4724510.250],  -- explicit extent (optional)
+	COMPUTE_VALID_ENVELOPE true,  -- derive extent from valid pixels
 	SRS 'EPSG:25830',
 	GEOMETRY_COLUMN 'geometry',
 	DATABAND_COLUMNS ['databand_3', 'databand_2', 'databand_1']
 );
 ```
 
-#### Algebraic operations on band data
+### Band algebra
 
 ```sql
 WITH __input AS (
@@ -222,62 +218,50 @@ This extension is based on the [DuckDB extension template](https://github.com/du
 
 ### Dependencies
 
-You need a recent version of CMake (3.5) and a C++14 compatible compiler.
+You need CMake ≥ 3.5 and a C++14-compatible compiler. [Ninja](https://ninja-build.org) is recommended and can be selected by setting `GEN=ninja`.
 
-We also highly recommend that you install [Ninja](https://ninja-build.org) which you can select when building by setting the `GEN=ninja` environment variable.
-```
+```sh
 git clone --recurse-submodules https://github.com/ahuarte47/duckdb-raster
 cd duckdb-raster
 make release
 ```
 
-You can then invoke the built DuckDB (with the extension statically linked)
-```
+Invoke the built DuckDB (with the extension statically linked):
+
+```sh
 ./build/release/duckdb
 ```
 
-Please see the Makefile for more options, or the extension template documentation for more details.
+See the Makefile or the [extension template documentation](https://github.com/duckdb/extension-template) for additional options.
 
 ### Running the tests
 
-Different tests can be created for DuckDB extensions. The primary way of testing DuckDB extensions should be the SQL tests in `./test/sql`. These SQL tests can be run using:
+SQL tests live in `./test/sql` and are the primary test suite for the extension:
 
 ```sh
 make test
 ```
 
-### Installing the deployed binaries
+### Installing a locally built binary
 
-To install your extension binaries from S3, you will need to do two things. Firstly, DuckDB should be launched with the
-`allow_unsigned_extensions` option set to true. How to set this will depend on the client you're using. Some examples:
+To load an unsigned local build, launch DuckDB with `allow_unsigned_extensions` enabled:
 
 CLI:
-```shell
+```sh
 duckdb -unsigned
 ```
 
 Python:
 ```python
-con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
+con = duckdb.connect(':memory:', config={'allow_unsigned_extensions': 'true'})
 ```
 
 NodeJS:
 ```js
-db = new duckdb.Database(':memory:', {"allow_unsigned_extensions": "true"});
+db = new duckdb.Database(':memory:', { allow_unsigned_extensions: 'true' });
 ```
 
-Secondly, you will need to set the repository endpoint in DuckDB to the HTTP url of your bucket + version of the extension
-you want to install. To do this run the following SQL query in DuckDB:
+Then load the extension from its local path:
 ```sql
-SET custom_extension_repository='bucket.s3.eu-west-1.amazonaws.com/<your_extension_name>/latest';
+LOAD 'build/release/extension/raster/raster.duckdb_extension';
 ```
-Note that the `/latest` path will allow you to install the latest extension version available for your current version of
-DuckDB. To specify a specific version, you can pass the version instead.
-
-After running these steps, you can install and load your extension using the regular INSTALL/LOAD commands in DuckDB:
-```sql
-INSTALL raster;
-LOAD raster;
-```
-
-Enjoy!

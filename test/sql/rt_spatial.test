@@ -209,11 +209,11 @@ COPY (
         SELECT RT_CubeClip(databand_1,
                            tile_x,
                            tile_y,
-                          (metadata->>'blocksize_x')::INTEGER,
-                          (metadata->>'blocksize_y')::INTEGER,
-                          (metadata->>'transform')::DOUBLE[],
+                          (metadata->'blocksize_x')::INTEGER,
+                          (metadata->'blocksize_y')::INTEGER,
+                          (metadata->'transform')::DOUBLE[],
                            __clip_layer.geom,
-                          (metadata->>'bands'->>0->>'nodata')::DOUBLE
+                          (metadata->'bands'->0->'nodata')::DOUBLE
             ) AS databand_C, * EXCLUDE(databand_1)
         FROM
             __clip_layer,
@@ -223,9 +223,9 @@ COPY (
         RT_Polygon(databand_C,
                    tile_x,
                    tile_y,
-                  (metadata->>'blocksize_x')::INTEGER,
-                  (metadata->>'blocksize_y')::INTEGER,
-                  (metadata->>'transform')::DOUBLE[]) AS geometry_C,
+                  (metadata->'blocksize_x')::INTEGER,
+                  (metadata->'blocksize_y')::INTEGER,
+                  (metadata->'transform')::DOUBLE[]) AS geometry_C,
         * EXCLUDE(geometry, geom, databand_C)
     FROM
         __clipped
@@ -270,11 +270,11 @@ COPY (
         SELECT RT_CubeClip(databand_1,
                            tile_x,
                            tile_y,
-                          (metadata->>'blocksize_x')::INTEGER,
-                          (metadata->>'blocksize_y')::INTEGER,
-                          (metadata->>'transform')::DOUBLE[],
+                          (metadata->'blocksize_x')::INTEGER,
+                          (metadata->'blocksize_y')::INTEGER,
+                          (metadata->'transform')::DOUBLE[],
                            __clip_layer.geom,
-                          (metadata->>'bands'->>0->>'nodata')::DOUBLE
+                          (metadata->'bands'->0->'nodata')::DOUBLE
             ) AS databand_C, * EXCLUDE(databand_1)
         FROM
             __clip_layer,
@@ -331,11 +331,11 @@ COPY (
         SELECT RT_CubeClip(databand_1,
                            tile_x,
                            tile_y,
-                          (metadata->>'blocksize_x')::INTEGER,
-                          (metadata->>'blocksize_y')::INTEGER,
-                          (metadata->>'transform')::DOUBLE[],
+                          (metadata->'blocksize_x')::INTEGER,
+                          (metadata->'blocksize_y')::INTEGER,
+                          (metadata->'transform')::DOUBLE[],
                            __clip_layer.geom,
-                          (metadata->>'bands'->>0->>'nodata')::DOUBLE
+                          (metadata->'bands'->0->'nodata')::DOUBLE
             ) AS databand_C, * EXCLUDE(databand_1)
         FROM
             __clip_layer,
@@ -393,11 +393,11 @@ COPY (
         SELECT RT_CubeClip(databand_1,
                            tile_x,
                            tile_y,
-                          (metadata->>'blocksize_x')::INTEGER,
-                          (metadata->>'blocksize_y')::INTEGER,
-                          (metadata->>'transform')::DOUBLE[],
+                          (metadata->'blocksize_x')::INTEGER,
+                          (metadata->'blocksize_y')::INTEGER,
+                          (metadata->'transform')::DOUBLE[],
                            __clip_layer.geom,
-                          (metadata->>'bands'->>0->>'nodata')::DOUBLE
+                          (metadata->'bands'->0->'nodata')::DOUBLE
             ) AS databand_C, * EXCLUDE(databand_1)
         FROM
             __clip_layer,
@@ -407,9 +407,9 @@ COPY (
         RT_Envelope(databand_C,
                     tile_x,
                     tile_y,
-                   (metadata->>'blocksize_x')::INTEGER,
-                   (metadata->>'blocksize_y')::INTEGER,
-                   (metadata->>'transform')::DOUBLE[]) AS geometry
+                   (metadata->'blocksize_x')::INTEGER,
+                   (metadata->'blocksize_y')::INTEGER,
+                   (metadata->'transform')::DOUBLE[]) AS geometry
     FROM
         __clipped
 )

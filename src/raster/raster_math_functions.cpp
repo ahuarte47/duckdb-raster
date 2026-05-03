@@ -94,10 +94,10 @@ struct RT_Stats {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Calculates statistics for a specific band (0-based index) of a data cube.
+		Calculates statistics for a specific band (0-based index) of a datacube.
 
-		The statistics include minimum, maximum, average, standard deviation,
-		count of valid (non-nodata) values and count of nodata values.
+		The returned STRUCT contains: minimum, maximum, mean, standard deviation,
+		count of valid (non-nodata) cells, and count of nodata cells.
 	)";
 
 	static constexpr auto EXAMPLE = R"(
@@ -148,9 +148,7 @@ struct RT_NullOrEmpty {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Returns true if the data cube is null or empty, false otherwise.
-
-		A data cube is considered null or empty if it has no cells, or if every cell contains the nodata value.
+		Returns `true` if the datacube is `NULL` or contains only nodata cells, `false` otherwise.
 	)";
 
 	static constexpr auto EXAMPLE = R"(
@@ -204,10 +202,11 @@ struct RT_ChangeType {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Changes the data type of a data cube, converting the data buffer accordingly.
+		Changes the pixel data type of a datacube, returning a new datacube of the same dimensions.
 
-		The output data cube will have the same dimensions and data format as the input cube, but with the
-		specified data type.
+		All arithmetic operations produce `DOUBLE` values internally. Use this function to convert the result
+		to the desired storage type before writing to a raster file, or to reinterpret an existing band
+		(e.g. from `INT16` to `FLOAT`).
 	)";
 
 	static constexpr auto EXAMPLE = R"(
@@ -257,7 +256,7 @@ struct RT_ChangeType {
 //======================================================================================================================
 
 struct RT_Math {
-	//! Apply a unary operation to a data cube.
+	//! Apply a unary operation to a datacube.
 	static void ApplyUnaryOp(CubeUnaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 1);
 		const idx_t count = args.size();
@@ -281,7 +280,7 @@ struct RT_Math {
 		}
 	}
 
-	//! Apply a binary operation to two data cubes.
+	//! Apply a binary operation to two datacubes.
 	static void ApplyBinaryOp1(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
@@ -320,7 +319,7 @@ struct RT_Math {
 		}
 	}
 
-	//! Apply a binary operation to a data cube and a scalar value.
+	//! Apply a binary operation to a datacube and a scalar value.
 	static void ApplyBinaryOp2(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
@@ -367,15 +366,15 @@ struct RT_Math {
 		// Register unary operations
 		static constexpr std::array<std::tuple<const char *, CubeUnaryOp::Value, const char *>, 5> unary_ops = {{
 		    {"RT_CubeNeg", CubeUnaryOp::NEGATE,
-		     "Returns a data cube with each cell negated (multiplied by -1). No-data cells are preserved."},
+		     "Returns a datacube with each cell negated (multiplied by -1). Nodata cells are preserved."},
 		    {"RT_CubeAbs", CubeUnaryOp::ABSOLUTE,
-		     "Returns a data cube with the absolute value of each cell. No-data cells are preserved."},
+		     "Returns a datacube with the absolute value of each cell. Nodata cells are preserved."},
 		    {"RT_CubeSqrt", CubeUnaryOp::SQUARE_ROOT,
-		     "Returns a data cube with the square root of each cell. No-data cells are preserved."},
+		     "Returns a datacube with the square root of each cell. Nodata cells are preserved."},
 		    {"RT_CubeLog", CubeUnaryOp::LOGARITHM,
-		     "Returns a data cube with the natural logarithm of each cell. No-data cells are preserved."},
+		     "Returns a datacube with the natural logarithm of each cell. Nodata cells are preserved."},
 		    {"RT_CubeExp", CubeUnaryOp::EXPONENTIAL,
-		     "Returns a data cube with the exponential (e^x) of each cell. No-data cells are preserved."},
+		     "Returns a datacube with the exponential (e^x) of each cell. Nodata cells are preserved."},
 		}};
 		for (const auto &entry : unary_ops) {
 			const auto &function_name = std::get<0>(entry);
