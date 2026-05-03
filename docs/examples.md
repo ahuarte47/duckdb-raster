@@ -77,7 +77,7 @@ FROM
 ;
 ```
 
-<img src="images/read_multiple.png" alt="read_multiple.png" width="800"/>
+<p align="center"><img src="images/read_multiple.png" alt="read_multiple.png" width="600"/></p>
 
 > **Note on `separate_bands`:** By default (`separate_bands := false`), the input files are treated as tiles of a larger mosaic and the result has the same number of bands as each individual file. Setting `separate_bands := true` places each file into its own band of the VRT dataset, which is useful when reading spectrally different bands stored in separate files (see the NDVI example in [Section 5](#5-end-to-end-earth-observation-analysis)).
 
@@ -106,7 +106,7 @@ WITH (
 );
 ```
 
-<img src="images/copy_to_raster.png" alt="copy_to_raster.png" width="800"/>
+<p align="center"><img src="images/copy_to_raster.png" alt="copy_to_raster.png" width="600"/></p>
 
 For the full list of creation options refer to the [function reference](functions.md#rt_write) and to the [GDAL driver documentation](https://gdal.org/drivers/raster/index.html).
 
@@ -138,7 +138,7 @@ WITH (
 );
 ```
 
-<img src="images/copy_to_cog.png" alt="copy_to_cog.png" width="800"/>
+<p align="center"><img src="images/copy_to_cog.png" alt="copy_to_cog.png" width="600"/></p>
 
 ### Exporting tile footprints to vector formats
 
@@ -186,7 +186,7 @@ WITH (
 );
 ```
 
-<img src="images/copy_to_geopackage.png" alt="copy_to_geopackage.png" width="800"/>
+<p align="center"><img src="images/copy_to_geopackage.png" alt="copy_to_geopackage.png" width="600"/></p>
 
 ---
 
@@ -405,6 +405,7 @@ WITH (
     DATABAND_COLUMNS ['ndvi']
 );
 ```
+<p align="center"><img src="images/sentinel2_to_ndvi.png" alt="sentinel2_to_ndvi.png" width="600"/></p>
 
 ### Step 4 — Complete AOI workflow with dynamic STAC discovery
 
@@ -560,7 +561,7 @@ WITH (
 );
 ```
 
-<img src="images/sentinel2_to_ndvi.png" alt="sentinel2_to_ndvi.png" width="800"/>
+<p align="center"><img src="images/sentinel2_to_ndvi---aoi.png" alt="sentinel2_to_ndvi---aoi.png" width="600"/></p>
 
 ---
 
