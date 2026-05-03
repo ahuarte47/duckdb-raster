@@ -79,8 +79,8 @@ The `RT_Read` function accepts parameters, most of them optional:
 | `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
 | `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
 | `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. Only for single-file version of the function. |
-| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. |
-| `data_format` | VARCHAR | The data format to use when packing the databand column. `RAW` is the only option currently supported. |
+| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
+| `data_format` | VARCHAR | The data format to use when packing the databand column. Several options are available, read the list in the header section below. `RAW` is the default. |
 | `blocksize_x` | INTEGER | The block size of the tile in the x direction. You can use this parameter to override the original block size of the raster. |
 | `blocksize_y` | INTEGER | The block size of the tile in the y direction. You can use this parameter to override the original block size of the raster. |
 | `skip_empty_tiles` | BOOLEAN | `true` means that empty tiles (tiles with no data) will be skipped (It checks `GDAL_DATA_COVERAGE_STATUS_DATA` flag if supported). `true` is the default. |
@@ -92,10 +92,10 @@ This is the list of columns returned by `RT_Read`:
 + `x` and `y` are the coordinates of the center of each tile. The coordinate reference system is the same as the one of the raster file.
 + `bbox` is the bounding box of each tile, which is a struct with `xmin`, `ymin`, `xmax`, and `ymax` fields.
 + `geometry` is the footprint of each tile as a polygon.
-+ `level`, `tile_x`, and `tile_y` are the tile coordinates of each tile. The raster is read in tiles of size `blocksize_x` x `blocksize_y` (or the original block size of the raster if not overridden by the parameters). Each row of the output table corresponds to a tile of the raster, and the `databand_x` columns contain the data of that tile for each band.
++ `level`, `tile_x`, and `tile_y` are the tile coordinates of each tile. The raster is read in tiles of size `blocksize_x` x `blocksize_y` (or the original block size of the raster if not overridden by the parameters). Each row of the output table corresponds to a tile of the raster, and the `databand_x` columns contain the pixel data of that tile for each band.
 + `cols` and `rows` are the number of columns and rows of each tile, which can be different from the original raster if the `blocksize_x` and `blocksize_y` parameters are used to override the block size.
 + `metadata` is a JSON column that contains the metadata of the raster file, including the list of bands and their properties (data type, no data value, etc), the spatial reference system, the geotransform, and any other metadata provided by the GDAL driver.
-+ `databand_x` are BLOB columns that contain the data of the raster bands and a header metadata describing the schema of the data. If the `datacube` option is set to `true`, only a single column called `datacube` will contain all bands interleaved in a single N-dimensional array.
++ `databand_x` are BLOB columns that contain the pixel data of the raster bands and a header metadata describing the schema of the data. If the `datacube` option is set to `true`, only a single column called `datacube` will contain all bands interleaved in a single N-dimensional array.
 
 The data band columns are a BLOB with the following internal structure:
 
@@ -133,10 +133,12 @@ The data band columns are a BLOB with the following internal structure:
 
 + `data`[] (uint8_t): Interleaved pixel data for all bands, stored in row-major order. The size of this array depends on the data type, number of bands, and tile dimensions.
 
-By using `RT_Read`, the extension also provides “replacement scans” for common raster file formats, allowing you to query files of these formats as if they were tables directly.
+The default data format for the data band columns is `RAW`, which means that the pixel data is stored uncompressed in the BLOB. You can choose to use a compressed format by setting the `data_format` parameter to one of the available options, which may reduce the size of the BLOB and improve the RAM usage, at the cost of some additional CPU overhead for compression and decompression. Any operation on the data band columns will automatically expand the data to uncompressed format of double-precision values. If you are going to invoke operations on the data band columns, it will be more efficient to do not set any compression from the beginning. You can finally use any `RT_Cube2Type<TYPE>` function to cast the results of your operations to a desired type before writing the pixel data to a new file.
 
 `RT_Read` supports filter pushdown on the non-BLOB columns, which allows you to prefilter the tiles that are loaded based on their metadata or spatial location.
 Note that the `bbox` and `geometry` columns are available for spatial filtering; for example, you can filter tiles that intersect a given geometry.
+
+By using `RT_Read`, the extension also provides “replacement scans” for common raster file formats (`.tif`, `.img`, `.vrt`), allowing you to query files of these formats as if they were tables directly.
 
 #### Signature
 
@@ -173,9 +175,7 @@ FROM
 
 ### RT_Write
 
-Aka `COPY TO` with `FORMAT RASTER`
-
-You can write raster files using the `COPY` command in DuckDB.
+You can write new raster files in DuckDB using the `COPY` command and `FORMAT RASTER`.
 
 The extension fetches the geometry and data band columns of the input table and creates a raster file with the desired properties. The `geometry` column is used to calculate the spatial extent and the resolution of the output raster, and the databand columns are used to populate the pixel values of the output raster.
 
@@ -602,7 +602,6 @@ FROM (
 
 Sets a GDAL configuration option (equivalent to CPLSetConfigOption).
 
-Pass NULL as the value to unset the option.
 This is useful, for example, to allow unauthenticated access to public S3 buckets
 when using GDAL-native VSI paths:
 
@@ -611,7 +610,7 @@ Function accepts the following parameters:
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
 | `key` | VARCHAR | The GDAL configuration option key. |
-| `value` | VARCHAR | The value to set for the configuration option. Pass NULL to unset the option. |
+| `value` | VARCHAR | The value to set for the configuration option. Pass NULL when no value is needed. |
 
 #### Signature
 
@@ -666,9 +665,9 @@ SELECT
     RT_Envelope(databand_1,
                 tile_x,
                 tile_y,
-               (metadata->>'blocksize_x')::INTEGER,
-               (metadata->>'blocksize_y')::INTEGER,
-               (metadata->>'transform')::DOUBLE[]) AS geometry
+               (metadata->'blocksize_x')::INTEGER,
+               (metadata->'blocksize_y')::INTEGER,
+               (metadata->'transform')::DOUBLE[]) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
@@ -715,9 +714,9 @@ SELECT
     RT_Polygon(databand_1,
                tile_x,
                tile_y,
-              (metadata->>'blocksize_x')::INTEGER,
-              (metadata->>'blocksize_y')::INTEGER,
-              (metadata->>'transform')::DOUBLE[]) AS geometry
+              (metadata->'blocksize_x')::INTEGER,
+              (metadata->'blocksize_y')::INTEGER,
+              (metadata->'transform')::DOUBLE[]) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
@@ -765,11 +764,11 @@ SELECT
     RT_CubeClip(databand_1,
                 tile_x,
                 tile_y,
-               (metadata->>'blocksize_x')::INTEGER,
-               (metadata->>'blocksize_y')::INTEGER,
-               (metadata->>'transform')::DOUBLE[],
+               (metadata->'blocksize_x')::INTEGER,
+               (metadata->'blocksize_y')::INTEGER,
+               (metadata->'transform')::DOUBLE[],
                 ST_GeomFromText('POLYGON((...))')::GEOMETRY,
-                0.0) AS clipped
+               (metadata->'nodata')::DOUBLE) AS clipped
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
@@ -817,11 +816,11 @@ SELECT
     RT_CubeBurn(databand_1,
                 tile_x,
                 tile_y,
-               (metadata->>'blocksize_x')::INTEGER,
-               (metadata->>'blocksize_y')::INTEGER,
-               (metadata->>'transform')::DOUBLE[],
+               (metadata->'blocksize_x')::INTEGER,
+               (metadata->'blocksize_y')::INTEGER,
+               (metadata->'transform')::DOUBLE[],
                 ST_GeomFromText('POLYGON((...))')::GEOMETRY,
-                0.0) AS burned
+                1.0) AS burned
 FROM
     RT_Read('path/to/raster/file.tif')
 ;

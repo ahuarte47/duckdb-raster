@@ -66,6 +66,12 @@ The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported.
 | [`RT_CubeClip`](docs/functions.md#rt_cubeclip) | Returns a data cube where cells outside the given geometry are replaced by the specified value. |
 | [`RT_CubeBurn`](docs/functions.md#rt_cubeburn) | Returns a data cube where cells inside the given geometry are replaced by the specified value. |
 
+## Examples
+
+You can find more examples of how to use the extension in the [examples](docs/examples.md) folder, and in the [SQL tests](test/sql) that are run as part of the CI.
+
+But here are some quick examples of how to use the extension.
+
 #### Listing available drivers
 
 ```sql
@@ -124,6 +130,8 @@ FROM
 ```
 
 ```sql
+LOAD spatial;
+
 -- Filter tiles by spatial location
 SELECT
 	x, y, bbox, geometry
@@ -136,6 +144,7 @@ WHERE
 
 ```sql
 LOAD json;
+
 -- Create a polygon geometry for each contiguous region of non-no-data values in the data cube.
 SELECT
     RT_Polygon(databand_1,
