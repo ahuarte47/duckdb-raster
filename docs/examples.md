@@ -39,7 +39,11 @@ SELECT * FROM RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blo
 Use the `/vsis3/` prefix to instruct GDAL's virtual file system to read directly from S3. For public buckets, disable signature checking first:
 
 ```sql
+-- Enable public S3 access via GDAL.
 SELECT RT_GdalConfig('AWS_NO_SIGN_REQUEST', 'YES');
+
+-- Linux: Maybe also set the CA bundle path if you encounter SSL errors.
+-- SELECT RT_GdalConfig('CURL_CA_BUNDLE', '/etc/ssl/certs/ca-certificates.crt');
 
 SELECT
     *
@@ -425,6 +429,9 @@ LOAD http_client;
 
 -- Enable public S3 access via GDAL.
 SELECT RT_GdalConfig('AWS_NO_SIGN_REQUEST', 'YES');
+
+-- Linux: Maybe also set the CA bundle path if you encounter SSL errors.
+-- SELECT RT_GdalConfig('CURL_CA_BUNDLE', '/etc/ssl/certs/ca-certificates.crt');
 
 -- Search the STAC catalog and store all matching features.
 CREATE OR REPLACE TEMP TABLE __search_results AS
