@@ -340,15 +340,16 @@ struct RT_Write {
 			}
 
 			if (n_bands == 0 || x_size == 0 || y_size == 0) {
-				RASTER_SCAN_DEBUG_LOG(2, "Skipping empty tile at row %lu", row_idx);
+				RASTER_SCAN_DEBUG_LOG(2, "Skipping empty tile at row %" PRIu64, row_idx);
 				continue;
 			}
 
 			// Create the dataset for the tile and write the data to it
 
-			RASTER_SCAN_DEBUG_LOG(
-			    2, "Writing tile for row %lu: data_type=%d, bands=%d, size=(%d x %d), extent=(%lf, %lf, %lf, %lf)",
-			    row_idx, data_type, n_bands, x_size, y_size, x_min, y_min, x_max, y_max);
+			RASTER_SCAN_DEBUG_LOG(2,
+			                      "Writing tile for row %" PRIu64
+			                      ": data_type=%d, bands=%d, size=(%d x %d), extent=(%lf, %lf, %lf, %lf)",
+			                      row_idx, data_type, n_bands, x_size, y_size, x_min, y_min, x_max, y_max);
 
 			GDALDatasetUniquePtr dataset(driver->Create("", x_size, y_size, n_bands, data_type, nullptr));
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cinttypes>
+
 #include "raster_types.hpp"
 #include "data_types.hpp"
 
@@ -9,7 +11,11 @@
 #include "gdal_priv.h"
 
 // Debug logging controlled by RASTER_DEBUG environment variable
-[[maybe_unused]] static int GetDebugLevel() {
+#if defined(__has_cpp_attribute) && __has_cpp_attribute(maybe_unused)
+[[maybe_unused]]
+#endif
+static int
+GetDebugLevel() {
 	static int level = -1;
 	if (level == -1) {
 		const char *env = std::getenv("RASTER_DEBUG");

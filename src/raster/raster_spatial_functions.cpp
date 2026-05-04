@@ -359,7 +359,7 @@ struct RT_Polygon {
 			}
 
 			if (!polygon_ptr) {
-				RASTER_SCAN_DEBUG_LOG(1, "Failed to create polygon for row %lu", i);
+				RASTER_SCAN_DEBUG_LOG(1, "Failed to create polygon for row %" PRIu64, i);
 
 				// This should not happen, but just in case, return NULL geometry.
 				Value null_geom = Value();

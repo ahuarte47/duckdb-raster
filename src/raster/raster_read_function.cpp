@@ -518,12 +518,12 @@ struct RT_Read {
 
 						if (limit.offset_val.Type() == LimitNodeType::CONSTANT_VALUE) {
 							const idx_t offset_value = limit.offset_val.GetConstantValue();
-							RASTER_SCAN_DEBUG_LOG(1, "OFFSET pushdown: %lu", offset_value);
+							RASTER_SCAN_DEBUG_LOG(1, "OFFSET pushdown: %" PRIu64, offset_value);
 							bind_data.row_offset = offset_value;
 							limit.offset_val = BoundLimitNode();
 						}
 						const idx_t limit_value = limit.limit_val.GetConstantValue();
-						RASTER_SCAN_DEBUG_LOG(1, "LIMIT pushdown: %lu", limit_value);
+						RASTER_SCAN_DEBUG_LOG(1, "LIMIT pushdown: %" PRIu64, limit_value);
 						bind_data.row_count = MinValue<idx_t>(bind_data.row_count, bind_data.row_offset + limit_value);
 						limit.limit_val = BoundLimitNode();
 						return;
@@ -807,7 +807,7 @@ struct RT_Read {
 		const int start_ty = static_cast<int>(start_row / tiles_x);
 		const int start_tx = static_cast<int>(start_row % tiles_x);
 
-		RASTER_SCAN_DEBUG_LOG(2, "Execute: start_row=%lu, vector_size=%lu", start_row, vector_size);
+		RASTER_SCAN_DEBUG_LOG(2, "Execute: start_row=%" PRIu64 ", vector_size=%" PRIu64, start_row, vector_size);
 
 		const auto &filter_expressions = bind_data.filter_expressions;
 		const auto &column_ids = bind_data.column_ids;
