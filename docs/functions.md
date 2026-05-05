@@ -19,7 +19,7 @@
 | [`RT_Array2Cube`](#rt_array2cube) | Transforms an array of numeric values into a datacube column. |
 | [`RT_Cube<UnaryOp>`](#rt_cubeunaryop) | Applies an unary operation to the values in the datacube element-wise. |
 | [`RT_Cube<BinaryOp>`](#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
-| [`RT_CubeStats`](#rt_cubestats) | Calculates statistics for a specific band of a datacube. |
+| [`RT_CubeStats`](#rt_cubestats) | Calculates statistics (min, max, mean, stddev, count) for a specific band of a datacube. |
 | [`RT_GdalConfig`](#rt_gdalconfig) | Sets a GDAL configuration option (equivalent to CPLSetConfigOption). |
 
 **[Spatial Functions](#spatial-functions)**
@@ -30,6 +30,22 @@
 | [`RT_Polygon`](#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values in the datacube. |
 | [`RT_CubeClip`](#rt_cubeclip) | Returns a datacube where cells outside the given geometry are replaced by the specified value. |
 | [`RT_CubeBurn`](#rt_cubeburn) | Returns a datacube where cells inside the given geometry are replaced by the specified value. |
+| [`RT_CoordValue`](#rt_coordvalue) | Returns the value in a datacube at the pixel coordinates corresponding to the given spatial coordinates. |
+| [`RT_RasterValue`](#rt_rastervalue) | Returns the value in a datacube at the specified pixel coordinates. |
+
+**[Aggregate Functions](#aggregate-functions)**
+
+Aggregate functions operate on groups of rows (e.g. from a `GROUP BY` query) and return a single value per group.
+
+> _TODO_: This section will be implemented for the next release v1.1.0. It is not currently available.
+
+| Function | Summary |
+| --- | --- |
+| [`RT_CubeStats_Agg`](#rt_cubestats_agg) | Calculates statistics (min, max, mean, stddev, count) for a band in a set of datacubes. |
+| [`RT_Envelope_Agg`](#rt_envelope_agg) | Computes the bounding box of the valid (non-no-data) cells in a set of datacubes and returns it as a geometry. |
+| [`RT_Polygon_Agg`](#rt_polygon_agg) | Creates a polygon geometry for each contiguous region of non-no-data values in a set of datacubes. |
+| [`RT_CoordValue_Agg`](#rt_coordvalue_agg) | Returns the value in a set of datacubes at the pixel coordinates corresponding to the given spatial coordinates. |
+| [`RT_RasterValue_Agg`](#rt_rastervalue_agg) | Returns the value in a set of datacubes at the specified pixel coordinates. |
 
 ----
 
@@ -813,5 +829,57 @@ FROM
     RT_Read('path/to/raster/file.tif')
 ;
 ```
+
+----
+
+### RT_CoordValue
+
+Returns the value in a datacube at the pixel coordinates corresponding to the given spatial coordinates.
+
+> _TODO_: This function will be implemented for the next release v1.1.0. It is not currently available.
+
+----
+
+### RT_RasterValue
+
+Returns the value in a datacube at the specified pixel coordinates.
+
+> _TODO_: This function will be implemented for the next release v1.1.0. It is not currently available.
+
+----
+
+## Aggregate Functions
+
+Aggregate functions operate on groups of rows (e.g. from a `GROUP BY` query) and return a single value per group.
+
+> _TODO_: This section will be implemented for the next release v1.1.0. It is not currently available.
+
+### RT_CubeStats_Agg
+
+Calculates statistics (min, max, mean, stddev, count) for a band in a set of datacubes.
+
+----
+
+### RT_Envelope_Agg
+
+Computes the bounding box of the valid (non-no-data) cells in a set of datacubes and returns it as a geometry.
+
+----
+
+### RT_Polygon_Agg
+
+Creates a polygon geometry for each contiguous region of non-no-data values in a set of datacubes.
+
+----
+
+### RT_CoordValue_Agg
+
+Returns the value in a set of datacubes at the pixel coordinates corresponding to the given spatial coordinates.
+
+----
+
+### RT_RasterValue_Agg
+
+Returns the value in a set of datacubes at the specified pixel coordinates.
 
 ----

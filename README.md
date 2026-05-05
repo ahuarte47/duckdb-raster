@@ -47,7 +47,7 @@ LOAD raster;
 | [`RT_Array2Cube`](docs/functions.md#rt_array2cube) | Packages a plain SQL array back into a datacube column. |
 | [`RT_Cube<UnaryOp>`](docs/functions.md#rt_cubeunaryop) | Applies a unary operation to the datacube element-wise (`RT_CubeNeg`, `RT_CubeAbs`, …). |
 | [`RT_Cube<BinaryOp>`](docs/functions.md#rt_cubebinaryop) | Applies a binary operation between two datacubes or a datacube and a scalar. Operators `+`, `-`, `*`, `/`, `^`, `%` are also supported. |
-| [`RT_CubeStats`](docs/functions.md#rt_cubestats) | Calculates statistics (min, max, mean, stddev) for a band of a datacube. |
+| [`RT_CubeStats`](docs/functions.md#rt_cubestats) | Calculates statistics (min, max, mean, stddev, count) for a band of a datacube. |
 | [`RT_GdalConfig`](docs/functions.md#rt_gdalconfig) | Sets a GDAL configuration option (e.g. for S3 authentication). |
 
 **[Spatial Functions](docs/functions.md#spatial-functions)**
@@ -58,6 +58,20 @@ LOAD raster;
 | [`RT_Polygon`](docs/functions.md#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values in the datacube. |
 | [`RT_CubeClip`](docs/functions.md#rt_cubeclip) | Returns a datacube where cells outside the given geometry are replaced by the specified value. |
 | [`RT_CubeBurn`](docs/functions.md#rt_cubeburn) | Returns a datacube where cells inside the given geometry are replaced by the specified value. |
+| [`RT_CoordValue`](docs/functions.md#rt_coordvalue) | Returns the value in a datacube at the pixel coordinates corresponding to the given spatial coordinates. |
+| [`RT_RasterValue`](docs/functions.md#rt_rastervalue) | Returns the value in a datacube at the specified pixel coordinates. |
+
+**[Aggregate Functions](docs/functions.md#aggregate-functions)**
+
+Aggregate functions operate on groups of rows (e.g. from a `GROUP BY` query) and return a single value per group.
+
+| Function | Summary |
+| --- | --- |
+| [`RT_CubeStats_Agg`](docs/functions.md#rt_cubestats_agg) | Calculates statistics (min, max, mean, stddev, count) for a band in a set of datacubes. |
+| [`RT_Envelope_Agg`](docs/functions.md#rt_envelope_agg) | Computes the bounding box of the valid (non-no-data) cells in a set of datacubes and returns it as a geometry. |
+| [`RT_Polygon_Agg`](docs/functions.md#rt_polygon_agg) | Creates a polygon geometry for each contiguous region of non-no-data values in a set of datacubes. |
+| [`RT_CoordValue_Agg`](docs/functions.md#rt_coordvalue_agg) | Returns the value in a set of datacubes at the pixel coordinates corresponding to the given spatial coordinates. |
+| [`RT_RasterValue_Agg`](docs/functions.md#rt_rastervalue_agg) | Returns the value in a set of datacubes at the specified pixel coordinates. |
 
 ## Examples
 
