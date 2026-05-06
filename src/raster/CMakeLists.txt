@@ -1,17 +1,14 @@
+add_subdirectory(modules)
+add_subdirectory(scalar)
+add_subdirectory(table)
+
 set(EXTENSION_SOURCES
     ${EXTENSION_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/gdal_module.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/data_cube.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/data_format_utils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/data_types.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/filter_eval.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_casts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_types.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_utils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raster_drivers_function.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raster_read_function.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raster_array_functions.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raster_math_functions.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raster_spatial_functions.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raster_write_function.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/filter_eval.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/data_cube.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/data_types.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/data_format_utils.cpp
     PARENT_SCOPE)

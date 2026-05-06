@@ -27,7 +27,7 @@
 // GDAL
 #include "gdal_priv.h"
 #include "gdal_utils.h"
-#include "gdal_file_system.hpp"
+#include "modules/gdal_file_system.hpp"
 
 namespace duckdb {
 
