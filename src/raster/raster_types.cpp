@@ -33,6 +33,7 @@ LogicalType RasterTypes::ARRAY(const LogicalType &element_type) {
 LogicalType RasterTypes::STATS() {
 	auto stats_type = LogicalType::STRUCT({{"minimum", LogicalType::DOUBLE},
 	                                       {"maximum", LogicalType::DOUBLE},
+	                                       {"sum", LogicalType::DOUBLE},
 	                                       {"mean", LogicalType::DOUBLE},
 	                                       {"stddev", LogicalType::DOUBLE},
 	                                       {"valid_count", LogicalType::BIGINT},

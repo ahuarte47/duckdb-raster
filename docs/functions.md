@@ -19,7 +19,7 @@
 | [`RT_Array2Cube`](#rt_array2cube) | Transforms an array of numeric values into a datacube column. |
 | [`RT_Cube<UnaryOp>`](#rt_cubeunaryop) | Applies an unary operation to the values in the datacube element-wise. |
 | [`RT_Cube<BinaryOp>`](#rt_cubebinaryop) | Applies a binary operation to the values in the datacube element-wise. |
-| [`RT_CubeStats`](#rt_cubestats) | Calculates statistics (min, max, mean, stddev, count) for a specific band of a datacube. |
+| [`RT_CubeStats`](#rt_cubestats) | Calculates statistics for a specific band (0-based index) of a datacube. |
 | [`RT_GdalConfig`](#rt_gdalconfig) | Sets a GDAL configuration option (equivalent to CPLSetConfigOption). |
 
 **[Spatial Functions](#spatial-functions)**
@@ -41,7 +41,7 @@ Aggregate functions operate on groups of rows (e.g. from a `GROUP BY` query) and
 
 | Function | Summary |
 | --- | --- |
-| [`RT_CubeStats_Agg`](#rt_cubestats_agg) | Calculates statistics (min, max, mean, stddev, count) for a band in a set of datacubes. |
+| [`RT_CubeStats_Agg`](#rt_cubestats_agg) | Calculates statistics for a specific band (0-based index) in a set of datacubes. |
 | [`RT_Envelope_Agg`](#rt_envelope_agg) | Computes the bounding box of the valid (non-no-data) cells in a set of datacubes and returns it as a geometry. |
 | [`RT_Polygon_Agg`](#rt_polygon_agg) | Creates a polygon geometry for each contiguous region of non-no-data values in a set of datacubes. |
 | [`RT_CoordValue_Agg`](#rt_coordvalue_agg) | Returns the value in a set of datacubes at the pixel coordinates corresponding to the given spatial coordinates. |
@@ -559,6 +559,7 @@ The returned value is a `STRUCT` with the following fields:
 | ----- | ---- | ----------- |
 | `minimum` | DOUBLE | Minimum pixel value among valid (non-nodata) cells. |
 | `maximum` | DOUBLE | Maximum pixel value among valid (non-nodata) cells. |
+| `sum` | DOUBLE | Sum of all valid pixel values. |
 | `mean` | DOUBLE | Mean (average) of all valid pixel values. |
 | `stddev` | DOUBLE | Population standard deviation of all valid pixel values. |
 | `valid_count` | BIGINT | Number of valid (non-nodata) cells. |
@@ -590,6 +591,7 @@ FROM
 SELECT
     stats.minimum,
     stats.maximum,
+    stats.sum,
     stats.mean,
     stats.stddev,
     stats.valid_count,
@@ -856,7 +858,47 @@ Aggregate functions operate on groups of rows (e.g. from a `GROUP BY` query) and
 
 ### RT_CubeStats_Agg
 
-Calculates statistics (min, max, mean, stddev, count) for a band in a set of datacubes.
+Calculates statistics for a specific band (0-based index) in a set of datacubes.
+
+The returned value is a `STRUCT` with same fields as the `RT_CubeStats` function, but computed across all
+datacubes in the group instead of a single datacube.
+
+The function accepts the following parameters:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `databand` | DATACUBE | The datacube column to compute statistics for. |
+| `band_index` | INTEGER | The 0-based index of the band to compute statistics for. |
+
+#### Signature
+
+```sql
+RT_CubeStats_Agg (datacube DATACUBE, band_index INTEGER)
+```
+
+#### Examples
+
+```sql
+SELECT
+    RT_CubeStats_Agg(databand_1, 0) AS stats
+FROM
+    RT_Read('path/to/raster/file.tif')
+;
+
+-- Access individual fields:
+SELECT
+    stats.minimum,
+    stats.maximum,
+    stats.sum,
+    stats.mean,
+    stats.stddev,
+    stats.valid_count,
+    stats.nodata_count
+FROM (
+    SELECT RT_CubeStats_Agg(databand_1, 0) AS stats
+    FROM RT_Read('path/to/raster/file.tif')
+);
+```
 
 ----
 

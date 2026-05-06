@@ -120,8 +120,17 @@ bool CubeCellValue::IsValidValue() const {
 	return !std::isnan(value) && !std::isinf(value) && value != no_data;
 }
 
+int32_t CubeCellValue::GetBandIndex(idx_t bands, idx_t cols, idx_t rows, idx_t index) {
+	const idx_t pixels_per_band = cols * rows;
+	return static_cast<int32_t>(index / pixels_per_band);
+}
+
+int32_t CubeCellValue::GetBandIndex(const DataHeader &header) const {
+	return GetBandIndex(header.bands, header.cols, header.rows, index);
+}
+
 RasterCoord CubeCellValue::GetCoord(idx_t bands, idx_t cols, idx_t rows, idx_t index) {
-	const idx_t pixels_per_band = static_cast<idx_t>(cols) * static_cast<idx_t>(rows);
+	const idx_t pixels_per_band = cols * rows;
 	const idx_t pixel_in_band = index % pixels_per_band;
 	const int32_t col = static_cast<int32_t>(pixel_in_band % cols);
 	const int32_t row = static_cast<int32_t>(pixel_in_band / cols);

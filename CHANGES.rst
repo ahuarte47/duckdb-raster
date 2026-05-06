@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+1.1.0 (WIP)
+++++++++++++++++++
+
+- New `RT_CubeStats_Agg` aggregate function to calculates statistics for a specific band (0-based index) in a set of datacubes.
+
 1.0.0
 ++++++++++++++++++
 

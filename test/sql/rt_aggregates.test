@@ -1,0 +1,39 @@
+# name: test/sql/rt_aggregates.test
+# description: test raster extension
+# group: [sql]
+
+require raster
+
+query IIIIIIIIIIIIIIIIII
+WITH __input AS (
+    SELECT
+        RT_CubeStats_Agg(databand_1, 0) AS stats_r,
+        RT_CubeStats_Agg(databand_2, 0) AS stats_g,
+        RT_CubeStats_Agg(databand_3, 0) AS stats_b,
+    FROM
+        RT_Read('./test/data/overlay-sample.tiff')
+)
+SELECT
+    stats_r.minimum,
+    stats_r.maximum,
+    stats_r.mean,
+    stats_r.stddev,
+    stats_r.valid_count,
+    stats_r.nodata_count,
+    stats_g.minimum,
+    stats_g.maximum,
+    stats_g.mean,
+    stats_g.stddev,
+    stats_g.valid_count,
+    stats_g.nodata_count,
+    stats_b.minimum,
+    stats_b.maximum,
+    stats_b.mean,
+    stats_b.stddev,
+    stats_b.valid_count,
+    stats_b.nodata_count
+FROM
+    __input
+;
+----
+0.0	255.0	159.782638	62.911198	57600	0	0.0	255.0	119.094704	60.559050	57600	0	0.0	254.0	108.362517	61.648556	57600	0
