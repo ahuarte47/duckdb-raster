@@ -17,8 +17,12 @@ namespace {
 //======================================================================================================================
 
 struct RT_Cube2Array {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
 	//! Deserializes a datacube BLOB into a structured ARRAY value with metadata and pixel values.
-	static void Cube2Array(DataChunk &args, ExpressionState &state, Vector &result, const LogicalType &type) {
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result, const LogicalType &type) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -84,7 +88,7 @@ struct RT_Cube2Array {
 			const LogicalType logical_type(entry.second);
 
 			const auto executor = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Cube2Array::Cube2Array(args, state, result, logical_type);
+				RT_Cube2Array::Execute(args, state, result, logical_type);
 			};
 			const ScalarFunction function(function_name, {RasterTypes::DATACUBE(), LogicalType::BOOLEAN},
 			                              RasterTypes::ARRAY(logical_type), executor);
@@ -100,8 +104,12 @@ struct RT_Cube2Array {
 //======================================================================================================================
 
 struct RT_Array2Cube {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
 	//! Serializes an ARRAY of pixel values plus metadata into a datacube BLOB.
-	static void Array2Cube(const LogicalType &type, DataChunk &args, ExpressionState &state, Vector &result) {
+	static void Execute(const LogicalType &type, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -177,7 +185,7 @@ struct RT_Array2Cube {
 			const LogicalType logical_type(entry.second);
 
 			const auto executor = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Array2Cube::Array2Cube(logical_type, args, state, result);
+				RT_Array2Cube::Execute(logical_type, args, state, result);
 			};
 			const ScalarFunction function(function_name,
 			                              {LogicalType::LIST(logical_type), LogicalType::VARCHAR, LogicalType::INTEGER,

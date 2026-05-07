@@ -17,8 +17,12 @@ namespace {
 //======================================================================================================================
 
 struct RT_ChangeType {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
 	//! Change the data type of a data cube.
-	static void Apply(const LogicalType &logicalType, DataChunk &args, ExpressionState &state, Vector &result) {
+	static void Execute(const LogicalType &logicalType, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 1);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -82,7 +86,7 @@ struct RT_ChangeType {
 			const LogicalType logical_type(entry.second);
 
 			const auto executor = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_ChangeType::Apply(logical_type, args, state, result);
+				RT_ChangeType::Execute(logical_type, args, state, result);
 			};
 			const ScalarFunction function(function_name, {RasterTypes::DATACUBE()}, RasterTypes::DATACUBE(), executor);
 

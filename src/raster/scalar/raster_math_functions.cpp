@@ -17,8 +17,12 @@ namespace {
 //======================================================================================================================
 
 struct RT_NullOrEmpty {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
 	//! Returns true if the data cube is null or empty, false otherwise.
-	static void Apply(DataChunk &args, ExpressionState &state, Vector &result) {
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 1);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -55,7 +59,7 @@ struct RT_NullOrEmpty {
 		tags.insert("ext", "raster");
 		tags.insert("category", "scalar");
 
-		const ScalarFunction function("RT_CubeNullOrEmpty", {RasterTypes::DATACUBE()}, LogicalType::BOOLEAN, Apply);
+		const ScalarFunction function("RT_CubeNullOrEmpty", {RasterTypes::DATACUBE()}, LogicalType::BOOLEAN, Execute);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
 		                                 tags);
@@ -67,8 +71,12 @@ struct RT_NullOrEmpty {
 //======================================================================================================================
 
 struct RT_Math {
-	//! Apply a unary operation to a datacube.
-	static void ApplyUnaryOp(CubeUnaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Execute a unary operation to a datacube.
+	static void ExecuteUnaryOp(CubeUnaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 1);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -91,8 +99,8 @@ struct RT_Math {
 		}
 	}
 
-	//! Apply a binary operation to two datacubes.
-	static void ApplyBinaryOp1(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
+	//! Execute a binary operation on two datacubes.
+	static void ExecuteBinaryOp1(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -130,8 +138,8 @@ struct RT_Math {
 		}
 	}
 
-	//! Apply a binary operation to a datacube and a scalar value.
-	static void ApplyBinaryOp2(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
+	//! Execute a binary operation on a datacube and a scalar value.
+	static void ExecuteBinaryOp2(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -193,7 +201,7 @@ struct RT_Math {
 			const auto &description = std::get<2>(entry);
 
 			const auto executor = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Math::ApplyUnaryOp(op, args, state, result);
+				RT_Math::ExecuteUnaryOp(op, args, state, result);
 			};
 			ScalarFunction function =
 			    ScalarFunction(function_name, {RasterTypes::DATACUBE()}, RasterTypes::DATACUBE(), executor);
@@ -291,7 +299,7 @@ struct RT_Math {
 			ScalarFunctionSet function_set(function_name);
 
 			const auto executor01 = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Math::ApplyBinaryOp1(op, args, state, result);
+				RT_Math::ExecuteBinaryOp1(op, args, state, result);
 			};
 			ScalarFunction func01 = ScalarFunction(function_name, {RasterTypes::DATACUBE(), RasterTypes::DATACUBE()},
 			                                       RasterTypes::DATACUBE(), executor01);
@@ -299,7 +307,7 @@ struct RT_Math {
 			function_set.AddFunction(func01);
 
 			const auto executor02 = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Math::ApplyBinaryOp2(op, args, state, result);
+				RT_Math::ExecuteBinaryOp2(op, args, state, result);
 			};
 			ScalarFunction func02 = ScalarFunction(function_name, {RasterTypes::DATACUBE(), LogicalType::DOUBLE},
 			                                       RasterTypes::DATACUBE(), executor02);

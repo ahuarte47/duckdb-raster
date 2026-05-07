@@ -88,8 +88,12 @@ struct RT_Stats {
 		}
 	};
 
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
 	//! Calculate statistics of a band of a data cube.
-	static void CalcStats(DataChunk &args, ExpressionState &state, Vector &result) {
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -153,7 +157,7 @@ struct RT_Stats {
 		tags.insert("category", "scalar");
 
 		const ScalarFunction function("RT_CubeStats", {RasterTypes::DATACUBE(), LogicalType::INTEGER},
-		                              RasterTypes::STATS(), CalcStats);
+		                              RasterTypes::STATS(), Execute);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
 		                                 tags);

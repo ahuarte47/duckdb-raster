@@ -440,11 +440,11 @@ struct RT_SpatialOp {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
-	// Function
+	// Execute
 	//------------------------------------------------------------------------------------------------------------------
 
-	//! Evaluate a spatial operation on the input data cube.
-	static void EvalSpatialOp(const SpatialOp &op, DataChunk &args, ExpressionState &state, Vector &result) {
+	//! Execute a spatial operation on the input data cube.
+	static void Execute(const SpatialOp &op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 8);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -600,7 +600,7 @@ struct RT_SpatialOp {
 			const auto &description = std::get<2>(entry);
 
 			const auto executor = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_SpatialOp::EvalSpatialOp(op, args, state, result);
+				RT_SpatialOp::Execute(op, args, state, result);
 			};
 			ScalarFunction function =
 			    ScalarFunction(function_name,
