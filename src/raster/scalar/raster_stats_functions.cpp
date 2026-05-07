@@ -192,12 +192,10 @@ struct RT_Stats_Agg {
 		static void Operation(STATE &state, const A_TYPE &input, const B_TYPE &band_index,
 		                      AggregateBinaryInput &agg_input) {
 			// Process one input row:
-			// A_TYPE = string_t (BLOB/DATACUBE),
-			// B_TYPE = int32_t (INTEGER band index)
-			Value blob = Value::BLOB(const_data_ptr_cast(input.GetData()), input.GetSize());
-
+			// 	A_TYPE = string_t (BLOB/DATACUBE),
+			// 	B_TYPE = int32_t  (INTEGER band index)
 			DataCube arg_cube(agg_input.input.allocator.GetAllocator());
-			arg_cube.LoadBlob(blob);
+			arg_cube.LoadBlob(const_data_ptr_cast(input.GetData()), input.GetSize());
 			arg_cube.EnsureRaw();
 
 			const DataHeader header = arg_cube.GetHeader();

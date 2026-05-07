@@ -58,23 +58,14 @@ int64_t DataCube::GetExpectedSizeBytes() const {
 	return sizeof(DataHeader) + data_size;
 }
 
-void DataCube::LoadBlob(const Value &blob) {
-	if (blob.IsNull()) {
-		throw std::runtime_error("Cannot convert NULL blob to array");
-	}
-	if (blob.type().id() != LogicalTypeId::BLOB) {
-		throw std::runtime_error("Expected a BLOB value, but got " + blob.type().ToString());
-	}
-
+void DataCube::LoadBlob(const_data_ptr_t blob_data, idx_t blob_size) {
 	// Validate if the BLOB contains the expected metadata and data structure.
-	const auto &blob_str = StringValue::Get(blob);
-	const auto blob_data = reinterpret_cast<data_ptr_t>(const_cast<char *>(blob_str.data()));
-	const auto blob_size = blob_str.size();
+
 	if (blob_size < sizeof(DataHeader)) {
 		throw std::runtime_error("BLOB size is too small to contain a valid DataHeader");
 	}
 
-	MemoryStream blob_buffer(blob_data, blob_size);
+	MemoryStream blob_buffer(data_ptr_t(blob_data), blob_size);
 	DataHeader blob_header = blob_buffer.Read<DataHeader>();
 	if (blob_header.magic != DATA_BLOCK_HEADER_MAGIC) {
 		throw std::runtime_error("BLOB does not contain a valid DataHeader (invalid magic code)");
@@ -93,6 +84,21 @@ void DataCube::LoadBlob(const Value &blob) {
 		const idx_t data_size = blob_size - sizeof(DataHeader);
 		data_buffer.WriteData(blob_data + sizeof(DataHeader), data_size);
 	}
+}
+
+void DataCube::LoadBlob(const Value &blob) {
+	if (blob.IsNull()) {
+		throw std::runtime_error("Cannot convert NULL blob to array");
+	}
+	if (blob.type().id() != LogicalTypeId::BLOB) {
+		throw std::runtime_error("Expected a BLOB value, but got " + blob.type().ToString());
+	}
+
+	const auto &blob_str = StringValue::Get(blob);
+	const auto blob_data = const_data_ptr_t(blob_str.data());
+	const auto blob_size = blob_str.size();
+
+	LoadBlob(blob_data, blob_size);
 }
 
 Value DataCube::ToBlob() const {

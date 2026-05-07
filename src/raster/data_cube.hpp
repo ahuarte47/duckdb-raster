@@ -58,6 +58,8 @@ public:
 	//! Get the full size of the data cube in bytes, including the header and the data buffer.
 	int64_t GetExpectedSizeBytes() const;
 
+	//! Load the data cube from a stream containing the header followed by the raw pixel data, with the specified size.
+	void LoadBlob(const_data_ptr_t blob_data, idx_t blob_size);
 	//! Load the data cube from a BLOB value, parsing the header and the data buffer.
 	void LoadBlob(const Value &blob);
 	//! Convert the data cube to a BLOB value.
