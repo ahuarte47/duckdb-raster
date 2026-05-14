@@ -357,8 +357,8 @@ struct RT_Write {
 				dataset->SetProjection(bind_data.output_srs.c_str());
 			}
 
-			double geo_transform[6] = {x_min, (x_max - x_min) / x_size, 0, y_max, 0, (y_min - y_max) / y_size};
-			dataset->SetGeoTransform(geo_transform);
+			double gt[6] = {x_min, (x_max - x_min) / x_size, 0, y_max, 0, (y_min - y_max) / y_size};
+			dataset->SetGeoTransform(gt);
 
 			int data_size = GDALGetDataTypeSizeBytes(data_type);
 			int b = 1;
@@ -374,15 +374,10 @@ struct RT_Write {
 					RasterBounds bounds;
 
 					if (data_cube.GetBounds(bounds)) {
-						Point2D pt0 =
-						    RasterUtils::RasterCoordToWorldCoord(geo_transform, bounds.min_col, bounds.max_row + 1);
-						Point2D pt1 =
-						    RasterUtils::RasterCoordToWorldCoord(geo_transform, bounds.max_col + 1, bounds.max_row + 1);
-						Point2D pt2 =
-						    RasterUtils::RasterCoordToWorldCoord(geo_transform, bounds.max_col + 1, bounds.min_row);
-						Point2D pt3 =
-						    RasterUtils::RasterCoordToWorldCoord(geo_transform, bounds.min_col, bounds.min_row);
-
+						Point2D pt0 = RasterUtils::RasterCoordToWorldCoord(gt, bounds.min_col, bounds.max_row + 1);
+						Point2D pt1 = RasterUtils::RasterCoordToWorldCoord(gt, bounds.max_col + 1, bounds.max_row + 1);
+						Point2D pt2 = RasterUtils::RasterCoordToWorldCoord(gt, bounds.max_col + 1, bounds.min_row);
+						Point2D pt3 = RasterUtils::RasterCoordToWorldCoord(gt, bounds.min_col, bounds.min_row);
 						global_state.valid_bbox.Grow(pt0);
 						global_state.valid_bbox.Grow(pt1);
 						global_state.valid_bbox.Grow(pt2);
@@ -391,7 +386,7 @@ struct RT_Write {
 				}
 
 				// Write the tile data to the dataset, band by band.
-				for (int i = 0; i < header.bands; i++) {
+				for (int32_t i = 0; i < header.bands; i++) {
 					GDALRasterBand *band = dataset->GetRasterBand(b);
 					if (!band) {
 						throw std::runtime_error("Failed to get raster band from dataset");

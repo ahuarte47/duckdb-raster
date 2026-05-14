@@ -8,6 +8,7 @@
 // DuckDB
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
+#include "duckdb/common/file_system.hpp"
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
 #include "duckdb/common/typedefs.hpp"
@@ -109,10 +110,10 @@ struct RT_Read {
 		double geo_transform[6] = {0};
 		GDALDataType data_type = GDT_Unknown;
 		double nodata_value = NumericLimits<double>::Minimum();
-		int block_size_x = 0;
-		int block_size_y = 0;
-		int tiles_x = 0;
-		int tiles_y = 0;
+		int32_t block_size_x = 0;
+		int32_t block_size_y = 0;
+		int32_t tiles_x = 0;
+		int32_t tiles_y = 0;
 
 		vector<LogicalType> column_types;
 		idx_t row_offset = 0;
@@ -135,7 +136,16 @@ struct RT_Read {
 		std::vector<std::string> file_names;
 
 		const auto file_path = input.inputs[0].GetValue<std::string>();
-		file_names.push_back(GdalFilePath(file_path, context));
+		if (file_path.find("*") != std::string::npos) {
+			auto &fs = FileSystem::GetFileSystem(context);
+
+			auto files = fs.GlobFiles(file_path, FileGlobOptions::DISALLOW_EMPTY);
+			for (auto &file : files) {
+				file_names.push_back(GdalFilePath(file.path, context));
+			}
+		} else {
+			file_names.push_back(GdalFilePath(file_path, context));
+		}
 
 		return Bind(context, input, return_types, names, file_names);
 	}
@@ -152,6 +162,11 @@ struct RT_Read {
 		}
 		for (const auto &child : ListValue::GetChildren(input.inputs[0])) {
 			const auto file_path = StringValue::Get(child);
+
+			if (file_path.find("*") != std::string::npos) {
+				throw InvalidInputException(
+				    "File globbing is not supported when passing multiple file paths as a list.");
+			}
 			file_names.push_back(GdalFilePath(file_path, context));
 		}
 		return Bind(context, input, return_types, names, file_names);
@@ -612,23 +627,23 @@ struct RT_Read {
 	//------------------------------------------------------------------------------------------------------------------
 
 	//! Fill the output chunk with data for the specified tile coordinates.
-	static bool FillOutput(const BindData &bind_data, const idx_t &row_id, const idx_t &row_index, const int &level,
-	                       const int &tile_x, const int &tile_y, const FilterContext &filter_context,
+	static bool FillOutput(const BindData &bind_data, const idx_t &row_id, const idx_t &row_index, const int32_t &level,
+	                       const int32_t &tile_x, const int32_t &tile_y, const FilterContext &filter_context,
 	                       DataCube &data_cube, DataChunk &output) {
 		GDALDataset *dataset = bind_data.dataset.get();
 
 		const auto &metadata_ds = bind_data.metadata_ds;
-		const auto &geo_transform = bind_data.geo_transform;
-		const int &raster_size_x = dataset->GetRasterXSize();
-		const int &raster_size_y = dataset->GetRasterYSize();
-		const int &block_size_x = bind_data.block_size_x;
-		const int &block_size_y = bind_data.block_size_y;
+		const auto &gt = bind_data.geo_transform;
+		const int32_t raster_size_x = dataset->GetRasterXSize();
+		const int32_t raster_size_y = dataset->GetRasterYSize();
+		const int32_t block_size_x = bind_data.block_size_x;
+		const int32_t block_size_y = bind_data.block_size_y;
 		const auto &column_ids = bind_data.column_ids;
 
-		const int offset_x = tile_x * block_size_x;
-		const int offset_y = tile_y * block_size_y;
-		const int size_x = MinValue<int>(block_size_x, raster_size_x - offset_x);
-		const int size_y = MinValue<int>(block_size_y, raster_size_y - offset_y);
+		const int32_t offset_x = tile_x * block_size_x;
+		const int32_t offset_y = tile_y * block_size_y;
+		const int32_t size_x = MinValue<int32_t>(block_size_x, raster_size_x - offset_x);
+		const int32_t size_y = MinValue<int32_t>(block_size_y, raster_size_y - offset_y);
 
 		// Skip empty/sparse tiles (SPARSE_OK GeoTIFF optimization).
 		// GetDataCoverageStatus() returns GDAL_DATA_COVERAGE_STATUS_EMPTY when the tile
@@ -644,10 +659,10 @@ struct RT_Read {
 			}
 		}
 
-		const Point2D pt0 = RasterUtils::RasterCoordToWorldCoord(geo_transform, offset_x, offset_y);
-		const Point2D pt1 = RasterUtils::RasterCoordToWorldCoord(geo_transform, offset_x + size_x, offset_y);
-		const Point2D pt2 = RasterUtils::RasterCoordToWorldCoord(geo_transform, offset_x + size_x, offset_y + size_y);
-		const Point2D pt3 = RasterUtils::RasterCoordToWorldCoord(geo_transform, offset_x, offset_y + size_y);
+		const Point2D pt0 = RasterUtils::RasterCoordToWorldCoord(gt, offset_x, offset_y);
+		const Point2D pt1 = RasterUtils::RasterCoordToWorldCoord(gt, offset_x + size_x, offset_y);
+		const Point2D pt2 = RasterUtils::RasterCoordToWorldCoord(gt, offset_x + size_x, offset_y + size_y);
+		const Point2D pt3 = RasterUtils::RasterCoordToWorldCoord(gt, offset_x, offset_y + size_y);
 
 		const double x_min = MinValue<double>(MinValue<double>(pt0.x, pt1.x), MinValue<double>(pt2.x, pt3.x));
 		const double y_min = MinValue<double>(MinValue<double>(pt0.y, pt1.y), MinValue<double>(pt2.y, pt3.y));
@@ -721,10 +736,10 @@ struct RT_Read {
 				output.data[col_idx].SetValue(row_index, metadata_ds);
 				break;
 			default: {
-				const int num_bands = dataset->GetRasterCount();
+				const int32_t num_bands = dataset->GetRasterCount();
 
 				// Write band data as columns...
-				if (static_cast<int>(dim_index) < RASTER_FIRST_BAND_COLUMN_INDEX + num_bands) {
+				if (dim_index < static_cast<uint64_t>(RASTER_FIRST_BAND_COLUMN_INDEX + num_bands)) {
 					const GDALDataType &data_type = bind_data.data_type;
 					const DataFormat::Value &data_format = bind_data.data_format;
 					const double &nodata_value = bind_data.nodata_value;
@@ -802,10 +817,10 @@ struct RT_Read {
 		idx_t row_id = bind_data.row_offset + gstate.current_row;
 		idx_t output_size = 0;
 
-		const int &tiles_x = bind_data.tiles_x;
-		const int &tiles_y = bind_data.tiles_y;
-		const int start_ty = static_cast<int>(start_row / tiles_x);
-		const int start_tx = static_cast<int>(start_row % tiles_x);
+		const int32_t &tiles_x = bind_data.tiles_x;
+		const int32_t &tiles_y = bind_data.tiles_y;
+		const int32_t start_ty = static_cast<int32_t>(start_row / tiles_x);
+		const int32_t start_tx = static_cast<int32_t>(start_row % tiles_x);
 
 		RASTER_SCAN_DEBUG_LOG(2, "Execute: start_row=%" PRIu64 ", vector_size=%" PRIu64, start_row, vector_size);
 
@@ -818,10 +833,10 @@ struct RT_Read {
 
 		DataCube data_cube(Allocator::Get(context));
 
-		for (int tile_y = start_ty; tile_y < tiles_y && output_size < vector_size; ++tile_y) {
-			const int first_tx = (tile_y == start_ty) ? start_tx : 0;
+		for (int32_t tile_y = start_ty; tile_y < tiles_y && output_size < vector_size; ++tile_y) {
+			const int32_t first_tx = (tile_y == start_ty) ? start_tx : 0;
 
-			for (int tile_x = first_tx; tile_x < tiles_x && output_size < vector_size; ++tile_x) {
+			for (int32_t tile_x = first_tx; tile_x < tiles_x && output_size < vector_size; ++tile_x) {
 				// Process one tile.
 				if (FillOutput(bind_data, row_id, output_size, 0, tile_x, tile_y, filter_context, data_cube, output)) {
 					output_size++;
@@ -883,26 +898,37 @@ struct RT_Read {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-	    Read and import a variety of geospatial raster file formats using the GDAL library.
+		Open a raster file (or a mosaic of raster files) and return a table with the raster data.
 
-	    The `RT_Read` table function is based on the [GDAL](https://gdal.org/index.html) translator library and enables reading raster data from a variety of geospatial raster file formats as if they were DuckDB tables.
+		The `RT_Read` table function is based on the [GDAL](https://gdal.org/index.html) translator library and enables reading raster data from a variety of geospatial raster file formats as if they were DuckDB tables.
 
-	    > See [RT_Drivers](#rt_drivers) for a list of supported file formats and drivers.
+		> See [RT_Drivers](#rt_drivers) for a list of supported file formats and drivers.
 
-	    Except for the `path` parameter, all parameters are optional.
+		The `RT_Read` function accepts parameters, most of them optional:
 
-	    | Parameter | Type | Description |
-	    | --------- | -----| ----------- |
-	    | `path` | VARCHAR | The path to the file to read. Mandatory. |
-	    | `open_options` | VARCHAR[] | Key-value pairs passed to the GDAL driver. Single-file only. |
-	    | `allowed_drivers` | VARCHAR[] | GDAL driver names allowed to open the file. Single-file only. |
-	    | `sibling_files` | VARCHAR[] | Sibling files required to open the file. Single-file only. |
-	    | `separate_bands` | BOOLEAN | When `true`, each input file becomes its own band in the VRT dataset. Multi-file only. `false` is the default. |
-	    | `data_format` | VARCHAR | Compression format for the pixel data BLOB. `RAW` (uncompressed) is the default. |
-	    | `blocksize_x` | INTEGER | Override the tile width in pixels. |
-	    | `blocksize_y` | INTEGER | Override the tile height in pixels. |
-	    | `skip_empty_tiles` | BOOLEAN | When `true`, tiles with no data are omitted. `true` is the default. |
-	    | `datacube` | BOOLEAN | When `true`, all bands are merged into a single `datacube` column. `false` is the default. |
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `path` | VARCHAR | The path to the file to read. The only mandatory parameter. |
+		| `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
+		| `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
+		| `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. Only for single-file version of the function. |
+		| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
+		| `data_format` | VARCHAR | Compression format used when packing the pixel data into the BLOB. See the data format table in the BLOB structure section below. `RAW` (uncompressed) is the default. |
+		| `blocksize_x` | INTEGER | The block size of the tile in the x direction. You can use this parameter to override the original block size of the raster. |
+		| `blocksize_y` | INTEGER | The block size of the tile in the y direction. You can use this parameter to override the original block size of the raster. |
+		| `skip_empty_tiles` | BOOLEAN | When `true`, tiles that contain no data are omitted from the output (checks the `GDAL_DATA_COVERAGE_STATUS_DATA` flag when supported). `true` is the default. |
+		| `datacube` | BOOLEAN | When `true`, all bands are merged into a single `datacube` column; otherwise each band is returned as a separate `databand_N` column. `false` is the default. |
+
+		This is the list of columns returned by `RT_Read`:
+
+		+ `id` is a unique identifier for each tile of the raster.
+		+ `x` and `y` are the coordinates of the center of each tile. The coordinate reference system is the same as the one of the raster file.
+		+ `bbox` is the bounding box of each tile, which is a struct with `xmin`, `ymin`, `xmax`, and `ymax` fields.
+		+ `geometry` is the footprint of each tile as a polygon.
+		+ `level`, `tile_x`, and `tile_y` are the tile grid coordinates. The raster is partitioned into tiles of `blocksize_x` × `blocksize_y` pixels (or the file's native block size when not overridden).
+		+ `cols` and `rows` are the actual pixel dimensions of the tile, which may differ from the requested block size at the edges of the raster.
+		+ `metadata` is a JSON column with the raster file metadata: band properties (data type, nodata value, etc.), spatial reference system, geotransform, and any driver-specific metadata.
+		+ `databand_1`, `databand_2`, … are BLOB columns, each holding the pixel data for one raster band together with a small binary header that describes the tile layout. When the `datacube` option is `true`, a single `datacube` column is returned instead, containing all bands in the same BLOB format.
 
 	    Note that GDAL is single-threaded, so this table function cannot fully exploit DuckDB parallelism.
 

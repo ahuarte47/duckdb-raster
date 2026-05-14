@@ -5,4 +5,5 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_math_functions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_spatial_functions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_stats_functions.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raster_values_functions.cpp
     PARENT_SCOPE)
