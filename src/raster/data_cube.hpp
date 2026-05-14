@@ -43,6 +43,11 @@ private:
 	MemoryStream temp_buffer;
 
 public:
+	//! Read the header from a stream with the specified size.
+	static DataHeader ReadHeader(const_data_ptr_t blob_data, size_t blob_size);
+	//! Read the header from a BLOB value.
+	static DataHeader ReadHeader(const Value &blob);
+
 	//! Get the header of the data cube.
 	DataHeader GetHeader() const;
 	//! Set the header of the data cube.
@@ -54,12 +59,12 @@ public:
 	MemoryStream &GetBuffer();
 
 	//! Get the total dimensions size of the data cube.
-	int64_t GetCubeSize() const;
+	size_t GetCubeSize() const;
 	//! Get the full size of the data cube in bytes, including the header and the data buffer.
-	int64_t GetExpectedSizeBytes() const;
+	size_t GetExpectedSizeBytes() const;
 
 	//! Load the data cube from a stream containing the header followed by the raw pixel data, with the specified size.
-	void LoadBlob(const_data_ptr_t blob_data, idx_t blob_size);
+	void LoadBlob(const_data_ptr_t blob_data, size_t blob_size);
 	//! Load the data cube from a BLOB value, parsing the header and the data buffer.
 	void LoadBlob(const Value &blob);
 	//! Convert the data cube to a BLOB value.
@@ -72,12 +77,14 @@ public:
 
 	//! Get the Value at the specified Cube coordinates (band, column, row).
 	template <typename T>
-	T GetValue(uint32_t band, uint32_t col, uint32_t row);
+	T GetValue(int32_t band, int32_t col, int32_t row);
 	//! Get the Value at the specified linear index.
 	template <typename T>
-	T GetValue(idx_t index);
+	T GetValue(int64_t index);
 
-	//! Get the minimum and maximum column and row indices that contain valid (non-no-data) values.
+	//! Get the minimum and maximum column and row indices that contain valid values in the specified band.
+	bool GetBounds(int32_t band, RasterBounds &bounds);
+	//! Get the minimum and maximum column and row indices that contain valid values.
 	bool GetBounds(RasterBounds &bounds);
 
 	//! Returns true if the cube has no cells, or if every cell contains the nodata value.
@@ -86,7 +93,7 @@ public:
 private:
 	//! Read a value from the data buffer at the specified index.
 	template <typename T>
-	static T ReadValueAs(DataType::Value data_type, const data_ptr_t data_ptr, idx_t value_index);
+	static T ReadValueAs(DataType::Value data_type, const data_ptr_t data_ptr, int64_t index);
 
 public:
 	//! Change the data format of the data cube, converting the data buffer accordingly.
@@ -104,6 +111,9 @@ public:
 	static void Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, DataCube &r);
 	//! Apply a binary cell function to every cell of `a` paired with the scalar `b`, writing results into `r`.
 	static void Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &b, DataCube &r);
+
+	//! Apply a generic cell function to every cell of `a` in the specified band.
+	static void Apply(const CubeCellFunc &func, DataCube &a, int32_t band);
 	//! Apply a generic cell function to every cell of `a`.
 	static void Apply(const CubeCellFunc &func, DataCube &a);
 

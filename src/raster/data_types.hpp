@@ -27,7 +27,7 @@ struct DataType {
 	};
 
 	//! Get the size of a single value of the given data type in bytes.
-	static int64_t GetSizeBytes(const DataType::Value &data_type);
+	static size_t GetSizeBytes(const DataType::Value &data_type);
 
 	//! Convert a DataType::Value to a string.
 	static std::string ToString(const DataType::Value &data_type);
@@ -69,7 +69,7 @@ public:
 //! A single cell in the data cube, carrying its linear position, its pixel value, and the nodata sentinel.
 struct CubeCellValue {
 	//! The position index of the cell in the cube.
-	idx_t index;
+	int64_t index;
 	//! The value of the cell.
 	double value;
 	//! The no-data value of the cell, to consider when applying algebra operations.
@@ -86,12 +86,12 @@ struct CubeCellValue {
 	bool IsValidValue() const;
 
 	//! Get the band index (0-based) of a cell in the tile.
-	static int32_t GetBandIndex(idx_t bands, idx_t cols, idx_t rows, idx_t index);
+	static int32_t GetBandIndex(int32_t bands, int32_t cols, int32_t rows, int64_t index);
 	//! Get the band index (0-based) of this cell in the tile.
 	int32_t GetBandIndex(const DataHeader &header) const;
 
 	//! Get the (col, row) coordinates of a cell in the tile.
-	static RasterCoord GetCoord(idx_t bands, idx_t cols, idx_t rows, idx_t index);
+	static RasterCoord GetCoord(int32_t bands, int32_t cols, int32_t rows, int64_t index);
 	//! Get the (col, row) coordinates of this cell in the tile.
 	RasterCoord GetCoord(const DataHeader &header) const;
 };

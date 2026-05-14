@@ -1,0 +1,61 @@
+# name: test/sql/rt_pixel_values.test
+# description: test raster extension
+# group: [sql]
+
+require raster
+
+query IIII
+SELECT
+    RT_RasterValue(datacube, 0, 0,   0,   -9999.0) AS v_00,
+    RT_RasterValue(datacube, 0, 319, 0,   -9999.0) AS v_10,
+    RT_RasterValue(datacube, 0, 319, 179, -9999.0) AS v_11,
+    RT_RasterValue(datacube, 0, 0,   179, -9999.0) AS v_01,
+FROM
+    RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512, datacube := true)
+;
+----
+60.0	245.0	158.0	150.0
+
+statement error
+SELECT
+    RT_RasterValue(databand_1, 10000, 0, 0, -9999.0)
+FROM
+    RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+;
+----
+Band index out of range: 10000 >= 1
+
+query I
+SELECT
+    RT_RasterValue(databand_1, 0, 10000, 0, -9999.0)
+FROM
+    RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+;
+----
+-9999.0
+
+query I
+SELECT
+    RT_RasterValue(databand_1, 0, 0, 10000, -9999.0)
+FROM
+    RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
+;
+----
+-9999.0
+
+query IIII
+SELECT
+    RT_RasterValue_Agg(databand_1, 0, 0, 0, tile_x, tile_y, metadata, -9999),
+    RT_RasterValue_Agg(databand_1, 0, 3572, 2996, tile_x, tile_y, metadata, -9999),
+    RT_RasterValue_Agg(databand_1, 0, 3277, 5997, tile_x, tile_y, metadata, -9999),
+    RT_RasterValue_Agg(databand_1, 0, 5609, 4793, tile_x, tile_y, metadata, -1)
+FROM
+    RT_Read([
+        './test/data/mosaic/SCL.tif-land-clip00.tiff',
+        './test/data/mosaic/SCL.tif-land-clip01.tiff',
+        './test/data/mosaic/SCL.tif-land-clip10.tiff',
+        './test/data/mosaic/SCL.tif-land-clip11.tiff'
+    ])
+;
+----
+-9999.0	5	13	-9999.0

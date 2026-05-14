@@ -4,6 +4,12 @@
 
 require raster
 
+statement ok
+INSTALL spatial;
+
+statement ok
+LOAD spatial;
+
 query IIIIIIIIIIIIIIIIII
 WITH __input AS (
     SELECT

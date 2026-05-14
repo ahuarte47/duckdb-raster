@@ -43,6 +43,25 @@ struct RasterCoord {
 	}
 };
 
+//! Transformation matrix for mapping between Raster coordinates and World coordinates.
+struct RasterTransformMatrix {
+	double affine[6] = {0, 1, 0, 0, 0, -1}; // Default to identity transform with y flipped (i.e. pixel coordinates)
+	int32_t blocksize_x = 128;
+	int32_t blocksize_y = 128;
+
+	bool operator!=(const RasterTransformMatrix &other) const {
+		for (int i = 0; i < 6; i++) {
+			if (affine[i] != other.affine[i]) {
+				return true;
+			}
+		}
+		return blocksize_x != other.blocksize_x || blocksize_y != other.blocksize_y;
+	}
+	bool operator==(const RasterTransformMatrix &other) const {
+		return !(*this != other);
+	}
+};
+
 //! Bounding box of a raster in pixel coordinates.
 struct RasterBounds {
 	int32_t min_col = NumericLimits<int32_t>::Maximum();
