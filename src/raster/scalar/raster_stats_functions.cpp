@@ -234,8 +234,29 @@ struct RT_Stats_Agg {
 			DataCube arg_cube(aggr_input_data.allocator.GetAllocator());
 
 			for (idx_t i = 0; i < count; i++) {
-				auto &state = *reinterpret_cast<FunctionAggState *>(states[state_data.sel->get_index(i)]);
+				auto state_idx = state_data.sel->get_index(i);
 
+				// Check if we must skip this row.
+
+				bool row_valid = state_data.validity.RowIsValid(state_idx);
+				if (!row_valid) {
+					continue;
+				}
+				for (idx_t j = 0; j < 2; j++) {
+					auto input_idx = input_data[j].sel->get_index(i);
+
+					if (!input_data[j].validity.RowIsValid(input_idx)) {
+						row_valid = false;
+						break;
+					}
+				}
+				if (!row_valid) {
+					continue;
+				}
+
+				// Get the input parameters for this row.
+
+				auto &state = *reinterpret_cast<FunctionAggState *>(states[state_idx]);
 				const string_t &blob = param0[input_data[0].sel->get_index(i)];
 				const int32_t band_index = param1[input_data[1].sel->get_index(i)];
 
