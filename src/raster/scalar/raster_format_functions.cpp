@@ -49,9 +49,13 @@ struct RT_ChangeType {
 	static constexpr auto DESCRIPTION = R"(
 		Changes the pixel data type of a datacube, returning a new datacube of the same dimensions.
 
-		All arithmetic operations produce `DOUBLE` values internally. Use this function to convert the result
-		to the desired storage type before writing to a raster file, or to reinterpret an existing band
-		(e.g. from `INT16` to `FLOAT`).
+		All arithmetic operations produce `DOUBLE` values internally. Use this function to convert the result to the desired storage type before writing to a raster file, or to reinterpret the data type of an existing band (e.g. from `INT16` to `FLOAT`).
+
+		Function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `datacube` | DATACUBE | The datacube column whose pixel type will be converted. |
 	)";
 
 	static constexpr auto EXAMPLE = R"(
