@@ -638,7 +638,7 @@ SELECT RT_GdalConfig('AWS_NO_SIGN_REQUEST', 'YES');
 
 ### RT_RasterValue
 
-Returns the value in a specified band of a datacube at the specified pixel coordinates (column, row).
+Returns the value in a band of a datacube at the specified pixel coordinates (column, row).
 
 The function accepts the following parameters:
 
@@ -674,7 +674,7 @@ FROM
 
 ### RT_CoordValue
 
-Returns the value in a specified band of a datacube at the given world coordinates (x, y).
+Returns the value in a band of a datacube at the given world coordinates (x, y).
 
 The function converts the world coordinates to pixel coordinates using the affine geotransform matrix provided in the `metadata` argument, and then retrieves the value at those pixel coordinates. If the coordinates are out of bounds of the tile, the function returns the specified `default_value`.
 
@@ -953,7 +953,7 @@ FROM (
 
 ### RT_RasterValue_Agg
 
-Returns the value in a set of datacubes at the specified pixel coordinates.
+Returns the value in a set of datacubes at the specified pixel coordinates (column, row).
 
 The function accepts the following parameters:
 
@@ -1005,7 +1005,7 @@ FROM
 
 ### RT_CoordValue_Agg
 
-Returns the value in a set of datacubes at the specified world coordinates.
+Returns the value in a set of datacubes at the specified world coordinates (x, y).
 
 The function accepts the following parameters:
 

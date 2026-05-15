@@ -59,3 +59,28 @@ FROM
 ;
 ----
 -9999.0	5	13	-9999.0
+
+query IIIII
+SELECT
+    RT_CoordValue(datacube, 0, 545590.06, 4724477.82, metadata, -9999.0) AS v_0,
+    RT_CoordValue(datacube, 0, 545552.07, 4724442.47, metadata, -9999.0) AS v_1,
+    RT_CoordValue(datacube, 0, 545668.07, 4724425.39, metadata, -9999.0) AS v_2,
+    RT_CoordValue(datacube, 0, 545681.47, 4724508.02, metadata, -9999.0) AS v_3,
+    RT_CoordValue(datacube, 0, 545572.00, 4724462.34, metadata, -9999.0) AS v_4
+FROM
+    RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512, datacube := true)
+;
+----
+25.0	157.0	153.0	39.0	248.0
+
+query IIII
+SELECT
+    RT_CoordValue_Agg(databand_1, 0, 570472.00, 4771431.00, tile_x, tile_y, metadata, -2),
+    RT_CoordValue_Agg(databand_1, 0, 634370.00, 4737509.70, tile_x, tile_y, metadata, -2),
+    RT_CoordValue_Agg(databand_1, 0, 567691.00, 4695504.25, tile_x, tile_y, metadata, -2),
+    RT_CoordValue_Agg(databand_1, 0, 632730.19, 4671365.79, tile_x, tile_y, metadata, -2)
+FROM
+    RT_Read('./test/data/mosaic/SCL.tif-land.vrt')
+;
+----
+-9999.0	6.0	14.0	6.0

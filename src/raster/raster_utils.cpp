@@ -34,7 +34,7 @@ RasterCoord RasterUtils::WorldCoordToRasterCoord(const double (&matrix)[6], cons
 	if (matrix[2] == 0.0 && matrix[4] == 0.0 && matrix[1] != 0.0 && matrix[5] != 0.0) {
 		const double col = (x - matrix[0]) / matrix[1];
 		const double row = (y - matrix[3]) / matrix[5];
-		return RasterCoord(static_cast<int32_t>(std::round(col)), static_cast<int32_t>(std::round(row)));
+		return RasterCoord(static_cast<int32_t>(std::floor(col)), static_cast<int32_t>(std::floor(row)));
 	}
 
 	const double det = matrix[1] * matrix[5] - matrix[2] * matrix[4];
@@ -45,7 +45,7 @@ RasterCoord RasterUtils::WorldCoordToRasterCoord(const double (&matrix)[6], cons
 	const double col = inv_det * (+matrix[5] * (x - matrix[0]) - matrix[2] * (y - matrix[3]));
 	const double row = inv_det * (-matrix[4] * (x - matrix[0]) + matrix[1] * (y - matrix[3]));
 
-	return RasterCoord(static_cast<int32_t>(std::round(col)), static_cast<int32_t>(std::round(row)));
+	return RasterCoord(static_cast<int32_t>(std::floor(col)), static_cast<int32_t>(std::floor(row)));
 }
 
 RasterCoord RasterUtils::WorldCoordToRasterCoord(const double (&matrix)[6], const Point2D &coord) {
