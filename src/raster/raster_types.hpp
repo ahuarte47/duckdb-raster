@@ -20,6 +20,15 @@ namespace duckdb {
 #define RASTER_METADATA_COLUMN_INDEX   10
 #define RASTER_FIRST_BAND_COLUMN_INDEX 11
 
+//! Column indices for the implicit columns of the cells table function.
+#define CELL_ROWID_COLUMN_INDEX      0
+#define CELL_PIXEL_X_COLUMN_INDEX    1
+#define CELL_PIXEL_Y_COLUMN_INDEX    2
+#define CELL_COORD_X_COLUMN_INDEX    3
+#define CELL_COORD_Y_COLUMN_INDEX    4
+#define CELL_GEOMETRY_COLUMN_INDEX   5
+#define CELL_FIRST_BAND_COLUMN_INDEX 6
+
 //! Geographic 2D coordinate.
 struct Point2D {
 	double x;
