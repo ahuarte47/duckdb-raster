@@ -85,6 +85,43 @@ FROM
 
 > **Note on `separate_bands`:** By default (`separate_bands := false`), the input files are treated as tiles of a larger mosaic and the result has the same number of bands as each individual file. Setting `separate_bands := true` places each file into its own band of the VRT dataset, which is useful when reading spectrally different bands stored in separate files (see the NDVI example in [Section 5](#5-end-to-end-earth-observation-analysis)).
 
+`RT_Read` accepts pattern-based file paths with wildcards (`*`) and recursive globbing (`**`) to read multiple files without having to list them all explicitly.
+
+```sql
+-- Use a wildcard pattern to read multiple files
+SELECT
+    geometry, databand_1
+FROM
+    RT_Read('path/to/mosaic/raster-*.tif')
+;
+```
+
+Spatial manipulation is supported, so you can filter tiles by their spatial location or use the `geometry` or `bbox` columns to perform spatial operations and analyses.
+
+```sql
+LOAD spatial;
+
+-- Filter tiles by spatial location
+SELECT
+	x, y, bbox, geometry
+FROM
+	RT_Read('path/to/raster/file.tif')
+WHERE
+	ST_Intersects(geometry, ST_GeomFromText('POLYGON((...)))'))
+;
+```
+
+You can also read raster data at the pixel level using the `RT_ReadCells` function, which returns one row per value cell in the raster, along with its pixels and spatial coordinates.
+
+```sql
+-- Read raster file at the pixel level, one row per value cell with one column per band
+SELECT
+	id, x, y, geometry, pixel_x, pixel_y, band_1, band_2, band_3
+FROM
+	RT_ReadCells('path/to/raster/file.tif')
+;
+```
+
 ---
 
 ## 2. Writing Raster Files
