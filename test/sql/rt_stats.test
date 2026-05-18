@@ -1,23 +1,17 @@
-# name: test/sql/rt_aggregates.test
+# name: test/sql/rt_stats.test
 # description: test raster extension
 # group: [sql]
 
 require raster
 
-statement ok
-INSTALL spatial;
-
-statement ok
-LOAD spatial;
-
 query IIIIIIIIIIIIIIIIII
 WITH __input AS (
     SELECT
-        RT_CubeStats_Agg(databand_1, 0) AS stats_r,
-        RT_CubeStats_Agg(databand_2, 0) AS stats_g,
-        RT_CubeStats_Agg(databand_3, 0) AS stats_b,
+        RT_CubeStats(databand_1, 0) AS stats_r,
+        RT_CubeStats(databand_2, 0) AS stats_g,
+        RT_CubeStats(databand_3, 0) AS stats_b,
     FROM
-        RT_Read('./test/data/overlay-sample.tiff')
+        RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
 )
 SELECT
     stats_r.minimum,

@@ -528,9 +528,7 @@ COPY (
                 n.nir,
                 n.tile_x,
                 n.tile_y,
-               (n.metadata->'blocksize_x')::INTEGER,
-               (n.metadata->'blocksize_y')::INTEGER,
-               (n.metadata->'transform')::DOUBLE[],
+                n.metadata,
                (SELECT geom FROM __aoi),
                (n.metadata->'bands'->0->'nodata')::DOUBLE
             ) AS nir,
@@ -538,9 +536,7 @@ COPY (
                 r.red,
                 r.tile_x,
                 r.tile_y,
-               (r.metadata->'blocksize_x')::INTEGER,
-               (r.metadata->'blocksize_y')::INTEGER,
-               (r.metadata->'transform')::DOUBLE[],
+                r.metadata,
                (SELECT geom FROM __aoi),
                (r.metadata->'bands'->0->'nodata')::DOUBLE
             ) AS red

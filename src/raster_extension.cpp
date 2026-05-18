@@ -18,6 +18,7 @@
 #include "raster/scalar/raster_math_functions.hpp"
 #include "raster/scalar/raster_spatial_functions.hpp"
 #include "raster/scalar/raster_stats_functions.hpp"
+#include "raster/scalar/raster_values_functions.hpp"
 
 namespace duckdb {
 
@@ -37,6 +38,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 	RasterMathFunctions::Register(loader);
 	RasterSpatialFunctions::Register(loader);
 	RasterStatsFunctions::Register(loader);
+	RasterValuesFunctions::Register(loader);
 }
 
 void RasterExtension::Load(ExtensionLoader &loader) {

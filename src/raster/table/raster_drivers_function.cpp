@@ -113,10 +113,9 @@ struct RT_Drivers {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Returns the list of supported GDAL raster drivers and file formats.
+		Returns the list of supported GDAL RASTER drivers and file formats.
 
-		Not all drivers have been thoroughly tested. Some may require additional options to work as expected.
-		If you run into issues, consult the [GDAL docs](https://gdal.org/drivers/raster/index.html).
+		Note that not all of these drivers have been thoroughly tested. Some may require additional options to be passed to work as expected. If you run into any issues, please consult the [GDAL docs](https://gdal.org/drivers/raster/index.html).
 	)";
 
 	static constexpr auto EXAMPLE = R"(

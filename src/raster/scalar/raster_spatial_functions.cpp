@@ -38,19 +38,6 @@ public:
 	}
 };
 
-//! Extract the geo transform parameters from the input argument and store them in the provided array.
-static void ExtractGeoTransform(const Value &geo_transform, double gt[6]) {
-	const auto &children = ListValue::GetChildren(geo_transform);
-
-	if (children.size() != 6) {
-		throw InvalidInputException(
-		    "geo_transform must have exactly 6 values: originX, pixelWidth, rotX, originY, rotY, pixelHeight.");
-	}
-	for (idx_t k = 0; k < 6; k++) {
-		gt[k] = children[k].GetValue<double>();
-	}
-}
-
 //! Create a polygon geometry from the provided corner points.
 static GEOSGeometry *CreatePolygon(GEOSContextHandle_t geos_ctx, const Point2D points[4]) {
 	GEOSCoordSequence *coord_seq = GEOSCoordSeq_create_r(geos_ctx, 5, 2);
@@ -96,32 +83,58 @@ struct RT_Envelope {
 
 	//! Compute the bounding box of the valid (non-no-data) cells in the input data cube and return it as a geometry.
 	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
-		D_ASSERT(args.data.size() == 6);
+		D_ASSERT(args.data.size() == 5);
 		const idx_t count = args.size();
 		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 
+		RasterTransformMatrix matrix;
+		std::string matrix_str;
+
 		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 		for (idx_t i = 0; i < count; i++) {
 			Value blob = args.data[0].GetValue(i);
 
+			// Validate the input parameters.
+
+			int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
+			if (band_index < 0) {
+				throw InvalidInputException("band_index cannot be negative");
+			}
+
+			int32_t tile_x = args.data[2].GetValue(i).GetValue<int32_t>();
+			if (tile_x < 0) {
+				throw InvalidInputException("tile_x cannot be negative");
+			}
+
+			int32_t tile_y = args.data[3].GetValue(i).GetValue<int32_t>();
+			if (tile_y < 0) {
+				throw InvalidInputException("tile_y cannot be negative");
+			}
+
+			std::string metadata = args.data[4].GetValue(i).GetValue<string>();
+			if (metadata != matrix_str) {
+				matrix = RasterUtils::GetTransformMatrix(metadata);
+				matrix_str = metadata;
+			}
+
+			// Calculate the envelope of the valid cells in the specified band.
+
 			arg_cube.LoadBlob(blob);
 			arg_cube.EnsureRaw();
 
-			int32_t tile_x = args.data[1].GetValue(i).GetValue<int32_t>();
-			int32_t tile_y = args.data[2].GetValue(i).GetValue<int32_t>();
-			int32_t blocksize_x = args.data[3].GetValue(i).GetValue<int32_t>();
-			int32_t blocksize_y = args.data[4].GetValue(i).GetValue<int32_t>();
-
-			double gt[6] = {0};
-			ExtractGeoTransform(args.data[5].GetValue(i), gt);
+			const double(&gt)[6] = matrix.affine;
+			const int32_t &blocksize_x = matrix.blocksize_x;
+			const int32_t &blocksize_y = matrix.blocksize_y;
 
 			RasterBounds bbox;
 
-			if (!arg_cube.GetBounds(bbox)) {
+			if (!arg_cube.GetBounds(band_index, bbox)) {
 				// No valid cells, return NULL geometry.
-				result.SetValue(i, Value());
+				Value geometry_null = Value();
+				geometry_null.Reinterpret(LogicalType::GEOMETRY());
+				result.SetValue(i, geometry_null);
 			} else {
 				int32_t tx = tile_x * blocksize_x;
 				int32_t ty = tile_y * blocksize_y;
@@ -144,23 +157,27 @@ struct RT_Envelope {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Computes the bounding box of the valid (non-nodata) cells in the input datacube and
-		returns it as a geometry.
+		Computes the bounding box of the valid (non-no-data) cells in the input datacube for a specific band and returns it as a geometry.
 
-		The `geo_transform` argument is an array of 6 doubles [originX, pixelWidth, rotX, originY, rotY, pixelHeight]
-		representing the affine geotransform of the tile, used to convert pixel coordinates to spatial coordinates.
-		These values can be extracted from the `metadata` column returned by `RT_Read`.
+		The function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `databand` | DATACUBE | The datacube column to polygonize. |
+		| `band` | INTEGER | The 0-based index of the band to compute the envelope for. |
+		| `tile_x` | INTEGER | The tile x coordinate of the tile. |
+		| `tile_y` | INTEGER | The tile y coordinate of the tile. |
+		| `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size. |
+
+		The `metadata` argument is expected to contain the affine geotransform matrix and block size of the tile, which are used to convert between pixel coordinates and world coordinates.
+
+		This argument can be populated with the `metadata` column returned by `RT_Read`, which contains the necessary information; specifically, a `transform` entry of array of 6 doubles representing the affine geotransform matrix, and a pair `blocksize_x`/`blocksize_y` of numeric values representing the
+		block size of tile in `x` and `y` directions.
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		LOAD json;
 		SELECT
-			RT_Envelope(databand_1,
-                        tile_x,
-                        tile_y,
-                       (metadata->'blocksize_x')::INTEGER,
-                       (metadata->'blocksize_y')::INTEGER,
-                       (metadata->'transform')::DOUBLE[])
+			RT_Envelope(databand_1, 0, tile_x, tile_y, metadata)
 		FROM
 			RT_Read('path/to/raster/file.tif')
 		;
@@ -177,7 +194,7 @@ struct RT_Envelope {
 
 		ScalarFunction function("RT_Envelope",
 		                        {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
-		                         LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::LIST(LogicalType::DOUBLE)},
+		                         LogicalType::INTEGER, LogicalType::JSON()},
 		                        LogicalType::GEOMETRY(), Execute, nullptr, nullptr, nullptr);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
@@ -203,134 +220,108 @@ struct RT_Polygon {
 	// Execute
 	//------------------------------------------------------------------------------------------------------------------
 
-	struct RasterCoordHash {
-		size_t operator()(const RasterCoord &c) const {
-			return std::hash<int64_t>()(static_cast<int64_t>(c.row) << 32 | static_cast<uint32_t>(c.col));
+	//! Collects the coordinates of valid (non-no-data) cells of a specific band in a data cube.
+	class CoordinatesCollector {
+	public:
+		CoordinatesCollector(GEOSContextHandle_t &geos_ctx) : geos_ctx(geos_ctx), has_no_data(false) {
 		}
-	};
-	struct RasterCoordEqual {
-		bool operator()(const RasterCoord &a, const RasterCoord &b) const {
-			return a == b;
+
+	public:
+		//! Reset the collector to an empty state.
+		void Reset() {
+			bounds = RasterBounds();
+			coords.clear();
+			has_no_data = false;
 		}
-	};
 
-	//! Create a polygon geometry for each contiguous region of non-no-data values in the data cube.
-	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
-		D_ASSERT(args.data.size() == 6);
-		const idx_t count = args.size();
-		args.Flatten();
+		//! Add the coordinates from the given data cube and band.
+		void Add(DataCube &data_cube, const int32_t band, const int32_t tile_x, const int32_t tile_y,
+		         const RasterTransformMatrix &matrix) {
+			const DataHeader header = data_cube.GetHeader();
+			const int32_t tx = tile_x * matrix.blocksize_x;
+			const int32_t ty = tile_y * matrix.blocksize_y;
 
-		DataCube arg_cube(Allocator::Get(state.GetContext()));
-
-		// Functions to hold the spatial coordinates of cells for the current row.
-
-		GEOSLocalState &glocal_state = ExecuteFunctionState::GetFunctionState(state)->Cast<GEOSLocalState>();
-		GEOSContextHandle_t geos_ctx = glocal_state.ctx;
-
-		auto geometry_free = [geos_ctx](GEOSGeometry *g) {
-			if (g) {
-				GEOSGeom_destroy_r(geos_ctx, g);
-			}
-		};
-		auto wkb_writer_free = [geos_ctx](GEOSWKBWriter *w) {
-			if (w) {
-				GEOSWKBWriter_destroy_r(geos_ctx, w);
-			}
-		};
-		auto wkb_free = [geos_ctx](unsigned char *p) {
-			if (p) {
-				GEOSFree_r(geos_ctx, p);
-			}
-		};
-
-		std::shared_ptr<GEOSWKBWriter> wkb_writer(GEOSWKBWriter_create_r(geos_ctx), wkb_writer_free);
-		GEOSWKBWriter_setOutputDimension_r(geos_ctx, wkb_writer.get(), 2);
-
-		std::vector<RasterCoord> coords_vec;
-		std::unordered_set<RasterCoord, RasterCoordHash, RasterCoordEqual> coords_set;
-		Point2D points[4];
-
-		auto make_value = [geos_ctx, &wkb_writer, &wkb_free](GEOSGeometry *geom) {
-			size_t wkb_size = 0;
-			unsigned char *wkb_data = GEOSWKBWriter_write_r(geos_ctx, wkb_writer.get(), geom, &wkb_size);
-			if (!wkb_data) {
-				throw std::runtime_error("Failed to write geometry to WKB");
-			}
-			std::unique_ptr<unsigned char, decltype(wkb_free)> wkb_guard(wkb_data, wkb_free);
-			Value geom_val = Value::BLOB(wkb_data, wkb_size);
-			geom_val.Reinterpret(LogicalType::GEOMETRY());
-			return geom_val;
-		};
-
-		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
-		for (idx_t i = 0; i < count; i++) {
-			Value blob = args.data[0].GetValue(i);
-
-			arg_cube.LoadBlob(blob);
-			arg_cube.EnsureRaw();
-
-			int32_t tile_x = args.data[1].GetValue(i).GetValue<int32_t>();
-			int32_t tile_y = args.data[2].GetValue(i).GetValue<int32_t>();
-			int32_t blocksize_x = args.data[3].GetValue(i).GetValue<int32_t>();
-			int32_t blocksize_y = args.data[4].GetValue(i).GetValue<int32_t>();
-
-			double gt[6] = {0};
-			ExtractGeoTransform(args.data[5].GetValue(i), gt);
-
-			const DataHeader header = arg_cube.GetHeader();
-			coords_vec.clear();
-			coords_set.clear();
-
-			// Collect coordinates for all non-no-data cells of the specified band.
-			CubeCellFunc collect_coords = [&](const CubeCellValue &v) {
+			// Collect coordinates.
+			CubeCellFunc collect_coords = [this, &header, tx, ty](const CubeCellValue &v) {
 				if (!v.IsNoDataValue()) {
 					RasterCoord coord = v.GetCoord(header);
-
-					if (header.bands == 1) {
-						coords_vec.push_back(coord);
-					} else {
-						coords_set.insert(coord);
-					}
+					coord.col += tx;
+					coord.row += ty;
+					coords.push_back(coord);
+					bounds.Grow(coord);
+				} else {
+					has_no_data = true;
 				}
 			};
-			DataCube::Apply(collect_coords, arg_cube);
+			DataCube::Apply(collect_coords, data_cube, band);
+		}
 
-			// Join the cell coordinates into contiguous regions and create polygons for each region.
+		//! Convert the collected coordinates to a geometry Value.
+		Value ToValue(const RasterTransformMatrix &matrix) const {
+			const GEOSContextHandle_t geos_ctx = this->geos_ctx;
+			const double(&gt)[6] = matrix.affine;
+			Point2D points[4];
+
+			auto geometry_free = [geos_ctx](GEOSGeometry *g) {
+				if (g) {
+					GEOSGeom_destroy_r(geos_ctx, g);
+				}
+			};
+			auto wkb_writer_free = [geos_ctx](GEOSWKBWriter *w) {
+				if (w) {
+					GEOSWKBWriter_destroy_r(geos_ctx, w);
+				}
+			};
+			auto wkb_free = [geos_ctx](unsigned char *p) {
+				if (p) {
+					GEOSFree_r(geos_ctx, p);
+				}
+			};
+
+			std::shared_ptr<GEOSWKBWriter> wkb_writer(GEOSWKBWriter_create_r(geos_ctx), wkb_writer_free);
+			GEOSWKBWriter_setOutputDimension_r(geos_ctx, wkb_writer.get(), 2);
+
+			auto make_value = [geos_ctx, &wkb_writer, &wkb_free](GEOSGeometry *geom) {
+				size_t wkb_size = 0;
+				unsigned char *wkb_data = GEOSWKBWriter_write_r(geos_ctx, wkb_writer.get(), geom, &wkb_size);
+				if (!wkb_data) {
+					throw std::runtime_error("Failed to write geometry to WKB");
+				}
+				std::unique_ptr<unsigned char, decltype(wkb_free)> wkb_guard(wkb_data, wkb_free);
+				Value geometry_val = Value::BLOB(wkb_data, wkb_size);
+				geometry_val.Reinterpret(LogicalType::GEOMETRY());
+				return geometry_val;
+			};
 
 			GEOSGeometry *polygon_ptr = nullptr;
 
-			if (coords_vec.empty() && coords_set.empty()) {
-				// No valid cells, return NULL geometry.
-				Value null_geom = Value();
-				null_geom.Reinterpret(LogicalType::GEOMETRY());
-				result.SetValue(i, null_geom);
-				continue;
+			// No valid cells, return NULL geometry.
+			if (coords.empty()) {
+				Value geometry_null = Value();
+				geometry_null.Reinterpret(LogicalType::GEOMETRY());
+				return geometry_null;
 			}
-			if (coords_vec.size() == (static_cast<idx_t>(header.cols) * header.rows) ||
-			    coords_set.size() == (static_cast<idx_t>(header.cols) * header.rows)) {
-				// All cells are valid, return rectangle polygon for the whole tile.
-				int32_t tx = tile_x * blocksize_x;
-				int32_t ty = tile_y * blocksize_y;
-				points[0] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty);
-				points[1] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty + header.rows);
-				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, tx + header.cols, ty + header.rows);
-				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, tx + header.cols, ty);
+			// All cells are valid, return rectangle polygon for the whole tile.
+			if (!has_no_data) {
+				points[0] = RasterUtils::RasterCoordToWorldCoord(gt, bounds.min_col, bounds.max_row + 1);
+				points[1] = RasterUtils::RasterCoordToWorldCoord(gt, bounds.max_col + 1, bounds.max_row + 1);
+				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, bounds.max_col + 1, bounds.min_row);
+				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, bounds.min_col, bounds.min_row);
 
 				// Write to WKB and set the result value.
 				polygon_ptr = CreatePolygon(geos_ctx, points);
 				std::unique_ptr<GEOSGeometry, decltype(geometry_free)> polygon(polygon_ptr, geometry_free);
-				Value geom_val = make_value(polygon.get());
-				result.SetValue(i, geom_val);
-				continue;
+				Value geometry_val = make_value(polygon.get());
+				return geometry_val;
 			}
 
+			// Mixed valid and no-data cells, create polygon for each valid cell and union them together.
+
 			auto coord_to_polygon = [&](const RasterCoord &coord) {
-				int32_t tx = tile_x * blocksize_x + coord.col;
-				int32_t ty = tile_y * blocksize_y + coord.row;
-				points[0] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty);
-				points[1] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty + 1);
-				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty + 1);
-				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty);
+				points[0] = RasterUtils::RasterCoordToWorldCoord(gt, coord.col, coord.row);
+				points[1] = RasterUtils::RasterCoordToWorldCoord(gt, coord.col, coord.row + 1);
+				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, coord.col + 1, coord.row + 1);
+				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, coord.col + 1, coord.row);
 				return CreatePolygon(geos_ctx, points);
 			};
 			auto join_polygons = [&](GEOSGeometry *poly1, GEOSGeometry *poly2) {
@@ -346,31 +337,83 @@ struct RT_Polygon {
 				return new_polygon;
 			};
 
-			if (header.bands == 1) {
-				for (const RasterCoord &coord : coords_vec) {
-					GEOSGeometry *cell_polygon = coord_to_polygon(coord);
-					polygon_ptr = join_polygons(polygon_ptr, cell_polygon);
-				}
-			} else {
-				for (const RasterCoord &coord : coords_set) {
-					GEOSGeometry *cell_polygon = coord_to_polygon(coord);
-					polygon_ptr = join_polygons(polygon_ptr, cell_polygon);
-				}
+			for (const RasterCoord &coord : coords) {
+				GEOSGeometry *cell_polygon = coord_to_polygon(coord);
+				polygon_ptr = join_polygons(polygon_ptr, cell_polygon);
 			}
 
+			// This should not happen, but just in case, return NULL geometry.
 			if (!polygon_ptr) {
-				RASTER_SCAN_DEBUG_LOG(1, "Failed to create polygon for row %" PRIu64, i);
-
-				// This should not happen, but just in case, return NULL geometry.
-				Value null_geom = Value();
-				null_geom.Reinterpret(LogicalType::GEOMETRY());
-				result.SetValue(i, null_geom);
-				continue;
+				Value geometry_null = Value();
+				geometry_null.Reinterpret(LogicalType::GEOMETRY());
+				return geometry_null;
 			}
 
+			// Return the result value.
 			std::unique_ptr<GEOSGeometry, decltype(geometry_free)> polygon(polygon_ptr, geometry_free);
-			Value geom_val = make_value(polygon.get());
-			result.SetValue(i, geom_val);
+			Value geometry_val = make_value(polygon.get());
+			return geometry_val;
+		}
+
+	private:
+		GEOSContextHandle_t &geos_ctx;
+		RasterBounds bounds;
+		std::vector<RasterCoord> coords;
+		bool has_no_data = false;
+	};
+
+	//! Create a polygon geometry for each contiguous region of non-no-data values in the data cube.
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 5);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+
+		GEOSLocalState &glocal_state = ExecuteFunctionState::GetFunctionState(state)->Cast<GEOSLocalState>();
+		GEOSContextHandle_t &geos_ctx = glocal_state.ctx;
+		CoordinatesCollector collector(geos_ctx);
+
+		RasterTransformMatrix matrix;
+		std::string matrix_str;
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+
+			// Validate the input parameters.
+
+			int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
+			if (band_index < 0) {
+				throw InvalidInputException("Band index cannot be negative");
+			}
+
+			int32_t tile_x = args.data[2].GetValue(i).GetValue<int32_t>();
+			if (tile_x < 0) {
+				throw InvalidInputException("Tile X coordinate cannot be negative");
+			}
+
+			int32_t tile_y = args.data[3].GetValue(i).GetValue<int32_t>();
+			if (tile_y < 0) {
+				throw InvalidInputException("Tile Y coordinate cannot be negative");
+			}
+
+			std::string metadata = args.data[4].GetValue(i).GetValue<string>();
+			if (metadata != matrix_str) {
+				matrix = RasterUtils::GetTransformMatrix(metadata);
+				matrix_str = metadata;
+			}
+
+			// Collect the coordinates of valid cells for the specified band.
+
+			arg_cube.LoadBlob(blob);
+			arg_cube.EnsureRaw();
+
+			collector.Reset();
+			collector.Add(arg_cube, band_index, tile_x, tile_y, matrix);
+
+			Value geometry_val = collector.ToValue(matrix);
+			result.SetValue(i, geometry_val);
 		}
 	}
 
@@ -379,22 +422,29 @@ struct RT_Polygon {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Vectorizes a datacube by creating a polygon geometry for each contiguous region of non-nodata values.
+		Creates a polygon geometry for each contiguous region of non-no-data values in the datacube.
 
-		The `geo_transform` argument is an array of 6 doubles [originX, pixelWidth, rotX, originY, rotY, pixelHeight]
-		representing the affine geotransform of the tile, used to convert pixel coordinates to spatial coordinates.
-		These values can be extracted from the `metadata` column returned by `RT_Read`.
+		This function takes a datacube column as input and returns polygon geometry representing the contiguous regions of non-no-data values in the datacube. The function needs the tile coordinates, Geo Transform matrix, and blocksize of the datacube to calculate the geometry of the output polygons.
+
+		The function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `databand` | DATACUBE | The datacube column to polygonize. |
+		| `band` | INTEGER | The band index to polygonize. |
+		| `tile_x` | INTEGER | The tile x coordinate of the tile. |
+		| `tile_y` | INTEGER | The tile y coordinate of the tile. |
+		| `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size. |
+
+		The `metadata` argument is expected to contain the affine geotransform matrix and block size of the tile, which are used to convert between pixel coordinates and world coordinates.
+
+		This argument can be populated with the `metadata` column returned by `RT_Read`, which contains the necessary information; specifically, a `transform` entry of array of 6 doubles representing the affine geotransform matrix, and a pair `blocksize_x`/`blocksize_y` of numeric values representing the
+		block size of tile in `x` and `y` directions.
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		LOAD json;
 		SELECT
-            RT_Polygon(databand_1,
-                       tile_x,
-                       tile_y,
-                      (metadata->'blocksize_x')::INTEGER,
-                      (metadata->'blocksize_y')::INTEGER,
-                      (metadata->'transform')::DOUBLE[])
+            RT_Polygon(databand_1, 0, tile_x, tile_y, metadata)
 		FROM
 			RT_Read('path/to/raster/file.tif')
 		;
@@ -411,7 +461,7 @@ struct RT_Polygon {
 
 		ScalarFunction function("RT_Polygon",
 		                        {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
-		                         LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::LIST(LogicalType::DOUBLE)},
+		                         LogicalType::INTEGER, LogicalType::JSON()},
 		                        LogicalType::GEOMETRY(), Execute, nullptr, nullptr, nullptr, InitLocal);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
@@ -445,22 +495,15 @@ struct RT_SpatialOp {
 
 	//! Execute a spatial operation on the input data cube.
 	static void Execute(const SpatialOp &op, DataChunk &args, ExpressionState &state, Vector &result) {
-		D_ASSERT(args.data.size() == 8);
+		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
 		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
 
-		// If the transform matrix argument is constant across the whole chunk, parse it once.
-
-		double gt[6] = {0};
-		bool gt_is_constant = false;
-
-		if (count > 0 && args.data[5].GetVectorType() == VectorType::CONSTANT_VECTOR) {
-			ExtractGeoTransform(args.data[5].GetValue(0), gt);
-			gt_is_constant = true;
-		}
+		RasterTransformMatrix matrix;
+		std::string matrix_str;
 
 		// Functions to hold the spatial coordinates of cells for the current row.
 
@@ -500,8 +543,8 @@ struct RT_SpatialOp {
 			prep_geom.reset(GEOSPrepare_r(geos_ctx, raw_geom.get()));
 		};
 
-		if (count > 0 && args.data[6].GetVectorType() == VectorType::CONSTANT_VECTOR) {
-			extract_geometry(args.data[6].GetValue(0), raw_geom, prep_geom);
+		if (count > 0 && args.data[4].GetVectorType() == VectorType::CONSTANT_VECTOR) {
+			extract_geometry(args.data[4].GetValue(0), raw_geom, prep_geom);
 			geometry_is_constant = true;
 		}
 
@@ -510,22 +553,34 @@ struct RT_SpatialOp {
 		for (idx_t i = 0; i < count; i++) {
 			Value blob = args.data[0].GetValue(i);
 
+			// Validate the input parameters.
+
+			int32_t tile_x = args.data[1].GetValue(i).GetValue<int32_t>();
+			if (tile_x < 0) {
+				throw InvalidInputException("Tile X coordinate cannot be negative");
+			}
+
+			int32_t tile_y = args.data[2].GetValue(i).GetValue<int32_t>();
+			if (tile_y < 0) {
+				throw InvalidInputException("Tile Y coordinate cannot be negative");
+			}
+
+			std::string metadata = args.data[3].GetValue(i).GetValue<string>();
+			if (metadata != matrix_str) {
+				matrix = RasterUtils::GetTransformMatrix(metadata);
+				matrix_str = metadata;
+			}
+
 			arg_cube.LoadBlob(blob);
 			arg_cube.EnsureRaw();
 
-			int32_t tile_x = args.data[1].GetValue(i).GetValue<int32_t>();
-			int32_t tile_y = args.data[2].GetValue(i).GetValue<int32_t>();
-			int32_t blocksize_x = args.data[3].GetValue(i).GetValue<int32_t>();
-			int32_t blocksize_y = args.data[4].GetValue(i).GetValue<int32_t>();
-
-			// Parse input geo transform matrix?
-			if (!gt_is_constant) {
-				ExtractGeoTransform(args.data[5].GetValue(i), gt);
-			}
+			const double(&gt)[6] = matrix.affine;
+			const int32_t &blocksize_x = matrix.blocksize_x;
+			const int32_t &blocksize_y = matrix.blocksize_y;
 
 			// Parse input geometry?
 			if (!geometry_is_constant) {
-				extract_geometry(args.data[6].GetValue(i), raw_geom, prep_geom);
+				extract_geometry(args.data[4].GetValue(i), raw_geom, prep_geom);
 			}
 			if (!prep_geom) {
 				throw InvalidInputException("Failed to prepare geometry for row %lu", i);
@@ -534,7 +589,7 @@ struct RT_SpatialOp {
 			// Evaluate the spatial operation on the data cube.
 
 			const DataHeader header = arg_cube.GetHeader();
-			double burn_value = args.data[7].GetValue(i).GetValue<double>();
+			double burn_value = args.data[5].GetValue(i).GetValue<double>();
 
 			auto coord_to_polygon = [&](const RasterCoord &coord) {
 				int32_t tx = tile_x * blocksize_x + coord.col;
@@ -605,8 +660,7 @@ struct RT_SpatialOp {
 			ScalarFunction function =
 			    ScalarFunction(function_name,
 			                   {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
-			                    LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::LIST(LogicalType::DOUBLE),
-			                    LogicalType::GEOMETRY(), LogicalType::DOUBLE},
+			                    LogicalType::JSON(), LogicalType::GEOMETRY(), LogicalType::DOUBLE},
 			                   RasterTypes::DATACUBE(), executor, nullptr, nullptr, nullptr, InitLocal);
 
 			RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, description, "",

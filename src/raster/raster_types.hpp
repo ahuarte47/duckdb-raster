@@ -20,6 +20,15 @@ namespace duckdb {
 #define RASTER_METADATA_COLUMN_INDEX   10
 #define RASTER_FIRST_BAND_COLUMN_INDEX 11
 
+//! Column indices for the implicit columns of the cells table function.
+#define CELL_ROWID_COLUMN_INDEX      0
+#define CELL_X_COLUMN_INDEX          1
+#define CELL_Y_COLUMN_INDEX          2
+#define CELL_GEOMETRY_COLUMN_INDEX   3
+#define CELL_COL_COLUMN_INDEX        4
+#define CELL_ROW_COLUMN_INDEX        5
+#define CELL_FIRST_BAND_COLUMN_INDEX 6
+
 //! Geographic 2D coordinate.
 struct Point2D {
 	double x;
@@ -40,6 +49,25 @@ struct RasterCoord {
 	}
 	bool operator==(const RasterCoord &other) const {
 		return col == other.col && row == other.row;
+	}
+};
+
+//! Transformation matrix for mapping between Raster coordinates and World coordinates.
+struct RasterTransformMatrix {
+	double affine[6] = {0, 1, 0, 0, 0, -1}; // Default to identity transform with y flipped (i.e. pixel coordinates)
+	int32_t blocksize_x = 128;
+	int32_t blocksize_y = 128;
+
+	bool operator!=(const RasterTransformMatrix &other) const {
+		for (int i = 0; i < 6; i++) {
+			if (affine[i] != other.affine[i]) {
+				return true;
+			}
+		}
+		return blocksize_x != other.blocksize_x || blocksize_y != other.blocksize_y;
+	}
+	bool operator==(const RasterTransformMatrix &other) const {
+		return !(*this != other);
 	}
 };
 

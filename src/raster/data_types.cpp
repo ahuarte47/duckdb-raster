@@ -13,7 +13,7 @@ namespace duckdb {
 // DataType & DataFormat
 //======================================================================================================================
 
-int64_t DataType::GetSizeBytes(const DataType::Value &data_type) {
+size_t DataType::GetSizeBytes(const DataType::Value &data_type) {
 	switch (data_type) {
 	case DataType::Value::UINT8:
 	case DataType::Value::INT8:
@@ -120,8 +120,8 @@ bool CubeCellValue::IsValidValue() const {
 	return !std::isnan(value) && !std::isinf(value) && value != no_data;
 }
 
-int32_t CubeCellValue::GetBandIndex(idx_t bands, idx_t cols, idx_t rows, idx_t index) {
-	const idx_t pixels_per_band = cols * rows;
+int32_t CubeCellValue::GetBandIndex(int32_t bands, int32_t cols, int32_t rows, int64_t index) {
+	const int64_t pixels_per_band = static_cast<int64_t>(cols) * static_cast<int64_t>(rows);
 	return static_cast<int32_t>(index / pixels_per_band);
 }
 
@@ -129,9 +129,9 @@ int32_t CubeCellValue::GetBandIndex(const DataHeader &header) const {
 	return GetBandIndex(header.bands, header.cols, header.rows, index);
 }
 
-RasterCoord CubeCellValue::GetCoord(idx_t bands, idx_t cols, idx_t rows, idx_t index) {
-	const idx_t pixels_per_band = cols * rows;
-	const idx_t pixel_in_band = index % pixels_per_band;
+RasterCoord CubeCellValue::GetCoord(int32_t bands, int32_t cols, int32_t rows, int64_t index) {
+	const int64_t pixels_per_band = static_cast<int64_t>(cols) * static_cast<int64_t>(rows);
+	const int64_t pixel_in_band = index % pixels_per_band;
 	const int32_t col = static_cast<int32_t>(pixel_in_band % cols);
 	const int32_t row = static_cast<int32_t>(pixel_in_band / cols);
 	return RasterCoord(col, row);

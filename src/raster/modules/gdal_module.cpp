@@ -45,11 +45,17 @@ struct RT_GdalConfig {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static constexpr auto DESCRIPTION = R"(
-		Sets a GDAL configuration option (equivalent to CPLSetConfigOption).
+		Sets a GDAL configuration option (equivalent to `CPLSetConfigOption`).
 
-		Pass `NULL` as the value to unset the option.
-		Useful for configuring GDAL behaviour at runtime, for example to allow
-		unauthenticated access to public S3 buckets when using GDAL-native VSI paths.
+		Function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `key` | VARCHAR | The GDAL configuration option key. |
+		| `value` | VARCHAR | The value to set for the configuration option. Pass NULL when no value is needed. |
+
+		This is useful, for example, to allow unauthenticated access to public S3 buckets
+		when using GDAL-native VSI paths.
 	)";
 
 	static constexpr auto EXAMPLE = R"(

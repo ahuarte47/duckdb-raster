@@ -82,6 +82,41 @@ public:
 	}
 };
 
+//! Struct representing a raster cell's attributes for filter evaluation.
+class CellRow {
+private:
+	//! A constant empty value to return for invalid column indices.
+	static const Value EMPTY_VALUE;
+
+public:
+	const Value &row_id;
+	const Value &x;
+	const Value &y;
+	const Value &geometry;
+	const Value &col;
+	const Value &row;
+
+	//! Get the value of a column by index for filter evaluation.
+	const Value &ValueOf(int column_index) const {
+		switch (column_index) {
+		case CELL_ROWID_COLUMN_INDEX:
+			return row_id;
+		case CELL_X_COLUMN_INDEX:
+			return x;
+		case CELL_Y_COLUMN_INDEX:
+			return y;
+		case CELL_GEOMETRY_COLUMN_INDEX:
+			return geometry;
+		case CELL_COL_COLUMN_INDEX:
+			return col;
+		case CELL_ROW_COLUMN_INDEX:
+			return row;
+		default:
+			return EMPTY_VALUE;
+		}
+	}
+};
+
 /**
  * Evaluation class for FilterPushDown.
  * Evaluates filter expressions on a raster tile set of attributes.
@@ -98,6 +133,17 @@ public:
 	 * the DuckDB runtime engine.
 	 */
 	static bool Eval(const RasterRow &row, const FilterContext &ctx);
+
+	/**
+	 * Evaluate a set of DuckDB expressions on a raster cell set of attributes.
+	 *
+	 * Returns True if the filter was successfully evaluated or not totally supported by the evaluator.
+	 * False means we must skip the current cell in the table scan.
+	 *
+	 * In case of unsupported expressions, the filter will be evaluated at a later stage by
+	 * the DuckDB runtime engine.
+	 */
+	static bool Eval(const CellRow &row, const FilterContext &ctx);
 };
 
 } // namespace duckdb
