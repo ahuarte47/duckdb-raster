@@ -238,4 +238,33 @@ GDALDataType RasterUtils::DataTypeToGdalType(const DataType::Value &data_type) {
 	}
 }
 
+LogicalType RasterUtils::GdalTypeToLogicalType(const GDALDataType &data_type) {
+	switch (data_type) {
+	case GDT_Byte:
+		return LogicalType::UTINYINT;
+	case GDT_Int8:
+		return LogicalType::TINYINT;
+	case GDT_UInt16:
+		return LogicalType::USMALLINT;
+	case GDT_Int16:
+		return LogicalType::SMALLINT;
+	case GDT_UInt32:
+		return LogicalType::UINTEGER;
+	case GDT_Int32:
+		return LogicalType::INTEGER;
+	case GDT_UInt64:
+		return LogicalType::UBIGINT;
+	case GDT_Int64:
+		return LogicalType::BIGINT;
+	case GDT_Float32:
+		return LogicalType::FLOAT;
+	case GDT_Float64:
+		return LogicalType::DOUBLE;
+	// Note: GDAL's Float16 is not directly supported in DuckDB, we could map it to DOUBLE.
+	case GDT_Float16:
+	default:
+		throw std::runtime_error("Unsupported GDALDataType: " + std::string(GDALGetDataTypeName(data_type)));
+	}
+};
+
 } // namespace duckdb

@@ -64,6 +64,9 @@ public:
 	static DataType::Value GdalTypeToDataType(const GDALDataType &data_type);
 	//! Convert a DataType to the corresponding GDALDataType.
 	static GDALDataType DataTypeToGdalType(const DataType::Value &data_type);
+
+	//! Convert a GDALDataType to the corresponding LogicalType.
+	static LogicalType GdalTypeToLogicalType(const GDALDataType &data_type);
 };
 
 } // namespace duckdb
