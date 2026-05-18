@@ -1,9 +1,14 @@
 Release history
 ---------------
 
-1.1.0 (WIP)
+1.1.0
 ++++++++++++++++++
 
+- New `RT_ReadCells` function to read a raster file at the pixel level, returning one row per value cell in the raster.
+- New `RT_CoordValue` & `RT_CoordValue_Agg` functions, to extract the value of a specific band at a given world coordinate (x, y)
+- New `RT_RasterValue` & `RT_RasterValue_Agg` functions, to extract the value of a specific band at a given pixel coordinate (col, row).
+- The `RT_Read` function now supports globbing patterns to read multiple files as a mosaic (e.g. `RT_Read('/path/to/tiles/*.tif')`).
+- Breaking changes in the spatial functions; mapping between pixel and spatial coordinates is now performed using the `metadata` column.
 - New `RT_CubeStats_Agg` aggregate function to calculates statistics for a specific band (0-based index) in a set of datacubes.
 
 1.0.0
