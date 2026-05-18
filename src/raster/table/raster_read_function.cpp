@@ -1354,7 +1354,8 @@ struct RT_ReadCells {
 
 			// The filter expressions were evaluated but raster tile does not match the conditions?
 			if (!FilterEval::Eval(cell_row, filter_context)) {
-				RASTER_SCAN_DEBUG_LOG(3, " > cell_id=(%ld): tile did not match filter conditions, skipped", row_id + i);
+				RASTER_SCAN_DEBUG_LOG(3, " > cell_id=(%" PRIu64 "): tile did not match filter conditions, skipped",
+				                      (uint64_t)(row_id + i));
 				continue;
 			}
 
