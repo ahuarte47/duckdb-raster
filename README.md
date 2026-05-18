@@ -42,9 +42,9 @@ LOAD raster;
 
 | Function | Summary |
 | --- | --- |
+| [`RT_Array2Cube`](docs/functions.md#rt_array2cube) | Packages a plain SQL array into a datacube column. |
 | [`RT_Cube2Array`](docs/functions.md#rt_cube2array) | Extracts pixel values from a datacube column into a plain SQL array. |
 | [`RT_Cube2Type`](docs/functions.md#rt_cube2type) | Changes the pixel data type of a datacube. |
-| [`RT_Array2Cube`](docs/functions.md#rt_array2cube) | Packages a plain SQL array back into a datacube column. |
 | [`RT_Cube<UnaryOp>`](docs/functions.md#rt_cubeunaryop) | Applies a unary operation to the datacube element-wise (`RT_CubeNeg`, `RT_CubeAbs`, …). |
 | [`RT_Cube<BinaryOp>`](docs/functions.md#rt_cubebinaryop) | Applies a binary operation between two datacubes or a datacube and a scalar. Operators `+`, `-`, `*`, `/`, `^`, `%` are also supported. |
 | [`RT_CubeStats`](docs/functions.md#rt_cubestats) | Calculates statistics for a specific band (0-based index) of a datacube. |
@@ -54,12 +54,12 @@ LOAD raster;
 
 | Function | Summary |
 | --- | --- |
-| [`RT_Envelope`](docs/functions.md#rt_envelope) | Computes the bounding box of the valid (non-no-data) cells in the input datacube and returns it as a geometry. |
-| [`RT_Polygon`](docs/functions.md#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values in the datacube. |
+| [`RT_RasterValue`](docs/functions.md#rt_rastervalue) | Returns the value in a datacube at the specified pixel coordinates. |
+| [`RT_CoordValue`](docs/functions.md#rt_coordvalue) | Returns the value in a datacube at the specified world coordinates. |
+| [`RT_Envelope`](docs/functions.md#rt_envelope) | Computes the bounding box of the valid (non-no-data) cells in the input datacube for a specific band and returns it as a geometry. |
+| [`RT_Polygon`](docs/functions.md#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values for a specific band in the datacube. |
 | [`RT_CubeClip`](docs/functions.md#rt_cubeclip) | Returns a datacube where cells outside the given geometry are replaced by the specified value. |
 | [`RT_CubeBurn`](docs/functions.md#rt_cubeburn) | Returns a datacube where cells inside the given geometry are replaced by the specified value. |
-| [`RT_CoordValue`](docs/functions.md#rt_coordvalue) | Returns the value in a datacube at the pixel coordinates corresponding to the given spatial coordinates. |
-| [`RT_RasterValue`](docs/functions.md#rt_rastervalue) | Returns the value in a datacube at the specified pixel coordinates. |
 
 **[Aggregate Functions](docs/functions.md#aggregate-functions)**
 
@@ -68,10 +68,8 @@ Aggregate functions operate on groups of rows (e.g. from a `GROUP BY` query) and
 | Function | Summary |
 | --- | --- |
 | [`RT_CubeStats_Agg`](docs/functions.md#rt_cubestats_agg) | Calculates statistics for a specific band (0-based index) in a set of datacubes. |
-| [`RT_Envelope_Agg`](docs/functions.md#rt_envelope_agg) | Computes the bounding box of the valid (non-no-data) cells in a set of datacubes and returns it as a geometry. |
-| [`RT_Polygon_Agg`](docs/functions.md#rt_polygon_agg) | Creates a polygon geometry for each contiguous region of non-no-data values in a set of datacubes. |
-| [`RT_CoordValue_Agg`](docs/functions.md#rt_coordvalue_agg) | Returns the value in a set of datacubes at the pixel coordinates corresponding to the given spatial coordinates. |
 | [`RT_RasterValue_Agg`](docs/functions.md#rt_rastervalue_agg) | Returns the value in a set of datacubes at the specified pixel coordinates. |
+| [`RT_CoordValue_Agg`](docs/functions.md#rt_coordvalue_agg) | Returns the value in a set of datacubes at the specified world coordinates. |
 
 ## Examples
 
@@ -120,6 +118,8 @@ SELECT * FROM RT_Read('path/to/raster/file.tif');
 └───────┴───────────┴────────────┴────────────────────────────────┴─────────────────────────┴───────┴────────┴────────┴───────┴───────┴────────────┴────────────┘
 ```
 
+Function accepts a string or a list of strings as input. In case of a list of strings, the function creates a virtual raster (VRT) mosaic of the input files, which allows you to read multiple raster files as if they were one. This is especially useful when working with large rasters that are split into multiple files.
+
 ```sql
 -- Read multiple raster files as a mosaic using a VRT dataset
 SELECT
@@ -133,6 +133,19 @@ FROM
     ])
 ;
 ```
+
+`RT_Read` accepts pattern-based file paths with wildcards (`*`) and recursive globbing (`**`) to read multiple files without having to list them all explicitly.
+
+```sql
+-- Use a wildcard pattern to read multiple files
+SELECT
+    geometry, databand_1
+FROM
+    RT_Read('path/to/mosaic/raster-*.tif')
+;
+```
+
+Spatial manipulation is supported, so you can filter tiles by their spatial location or use the `geometry` or `bbox` columns to perform spatial operations and analyses.
 
 ```sql
 LOAD spatial;
@@ -149,22 +162,18 @@ WHERE
 
 ```sql
 LOAD spatial;
-LOAD json;
 
 -- Vectorize valid (non-nodata) pixel regions into polygon geometries
 SELECT
-    RT_Polygon(databand_1,
-               tile_x,
-               tile_y,
-              (metadata->'blocksize_x')::INTEGER,
-              (metadata->'blocksize_y')::INTEGER,
-              (metadata->'transform')::DOUBLE[]) AS geometry
+    RT_Polygon(databand_1, tile_x, tile_y, metadata) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
 ```
 
 ### Writing a raster file
+
+You can write a new raster file from any SQL query that produces a geometry column and one or more datacube columns. The geometry column is used to determine the spatial location and extent of each tile, while the datacube columns are used to populate the pixel values for each band.
 
 ```sql
 COPY (
@@ -189,6 +198,8 @@ WITH (
 
 ### Band algebra
 
+You can use the scalar functions to perform pixel-wise operations and transformations on the datacubes, such as computing indices, applying mathematical functions, or changing data types.
+
 ```sql
 WITH __input AS (
 	SELECT
@@ -204,6 +215,8 @@ FROM
 	__input
 ;
 ```
+
+Algebraic operations between datacubes (bands) or between datacubes and scalars are supported directly in SQL using the `RT_Cube<BinaryOp>` functions or standard arithmetic operators (`+`, `-`, `*`, `/`, `^`, `%`). For example, you can compute the NDVI index from the red and NIR bands of a raster file like this:
 
 ```sql
 WITH __input AS (

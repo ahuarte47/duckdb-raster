@@ -22,6 +22,37 @@ DataCube DataCube::EMPTY_CUBE(DataType::Value data_type) {
 	return empty_cube;
 }
 
+DataHeader DataCube::ReadHeader(const_data_ptr_t blob_data, size_t blob_size) {
+	// Validate if the BLOB contains the expected metadata and data structure.
+
+	if (blob_size < sizeof(DataHeader)) {
+		throw std::runtime_error("BLOB size is too small to contain a valid DataHeader");
+	}
+
+	MemoryStream blob_buffer(data_ptr_t(blob_data), blob_size);
+	DataHeader blob_header = blob_buffer.Read<DataHeader>();
+	if (blob_header.magic != DATA_BLOCK_HEADER_MAGIC) {
+		throw std::runtime_error("BLOB does not contain a valid DataHeader (invalid magic code)");
+	}
+
+	return blob_header;
+}
+
+DataHeader DataCube::ReadHeader(const Value &blob) {
+	if (blob.IsNull()) {
+		throw std::runtime_error("Cannot convert NULL blob to array");
+	}
+	if (blob.type().id() != LogicalTypeId::BLOB) {
+		throw std::runtime_error("Expected a BLOB value, but got " + blob.type().ToString());
+	}
+
+	const auto &blob_str = StringValue::Get(blob);
+	const auto blob_data = const_data_ptr_t(blob_str.data());
+	const auto blob_size = blob_str.size();
+
+	return ReadHeader(blob_data, blob_size);
+}
+
 DataHeader DataCube::GetHeader() const {
 	return header;
 }
@@ -48,17 +79,17 @@ MemoryStream &DataCube::GetBuffer() {
 	return data_buffer;
 }
 
-int64_t DataCube::GetCubeSize() const {
-	return static_cast<int64_t>(header.bands) * header.cols * header.rows;
+size_t DataCube::GetCubeSize() const {
+	return static_cast<size_t>(header.bands) * header.cols * header.rows;
 }
 
-int64_t DataCube::GetExpectedSizeBytes() const {
-	int64_t cube_size = GetCubeSize();
-	int64_t data_size = cube_size * DataType::GetSizeBytes(header.data_type);
+size_t DataCube::GetExpectedSizeBytes() const {
+	size_t cube_size = GetCubeSize();
+	size_t data_size = cube_size * DataType::GetSizeBytes(header.data_type);
 	return sizeof(DataHeader) + data_size;
 }
 
-void DataCube::LoadBlob(const_data_ptr_t blob_data, idx_t blob_size) {
+void DataCube::LoadBlob(const_data_ptr_t blob_data, size_t blob_size) {
 	// Validate if the BLOB contains the expected metadata and data structure.
 
 	if (blob_size < sizeof(DataHeader)) {
@@ -79,9 +110,9 @@ void DataCube::LoadBlob(const_data_ptr_t blob_data, idx_t blob_size) {
 	data_buffer.GrowCapacity(blob_size);
 	data_buffer.WriteData(const_data_ptr_cast(&header), sizeof(DataHeader));
 
-	const idx_t cube_size = GetCubeSize();
+	const size_t cube_size = GetCubeSize();
 	if (cube_size > 0) {
-		const idx_t data_size = blob_size - sizeof(DataHeader);
+		const size_t data_size = blob_size - sizeof(DataHeader);
 		data_buffer.WriteData(blob_data + sizeof(DataHeader), data_size);
 	}
 }
@@ -119,8 +150,8 @@ void DataCube::LoadArray(const Value &in_array, const DataHeader &in_header) {
 
 	// Validate that the number of values in the input array matches the expected number of values.
 
-	const std::size_t num_values = static_cast<size_t>(in_header.bands) * in_header.cols * in_header.rows;
-	if (children.size() != num_values) {
+	const size_t cube_size = static_cast<size_t>(in_header.bands) * in_header.cols * in_header.rows;
+	if (children.size() != cube_size) {
 		throw std::runtime_error(
 		    "The number of values in the input array does not match the expected number of values.");
 	}
@@ -192,7 +223,7 @@ Value DataCube::ToArray(const LogicalType &output_type, bool filter_nodata) {
 	const double no_data = header.no_data;
 	vector<Value> data_values;
 
-	idx_t cube_size = GetCubeSize();
+	size_t cube_size = GetCubeSize();
 	if (cube_size > 0) {
 		data_values.reserve(cube_size);
 
@@ -272,40 +303,85 @@ Value DataCube::ToArray(const LogicalType &output_type, bool filter_nodata) {
 }
 
 template <typename T>
-T DataCube::GetValue(uint32_t band, uint32_t col, uint32_t row) {
+T DataCube::GetValue(int32_t band, int32_t col, int32_t row) {
+	if (band < 0) {
+		throw std::out_of_range("Band index cannot be negative");
+	}
 	if (band >= header.bands) {
 		throw std::out_of_range("Band index is out of bounds");
 	}
+	if (col < 0) {
+		throw std::out_of_range("Column index cannot be negative");
+	}
 	if (col >= header.cols) {
 		throw std::out_of_range("Column index is out of bounds");
+	}
+	if (row < 0) {
+		throw std::out_of_range("Row index cannot be negative");
 	}
 	if (row >= header.rows) {
 		throw std::out_of_range("Row index is out of bounds");
 	}
 
-	const idx_t index = static_cast<idx_t>(band) * header.cols * header.rows + static_cast<idx_t>(row) * header.cols +
-	                    static_cast<idx_t>(col);
+	const int64_t index = static_cast<int64_t>(band) * header.cols * header.rows +
+	                      static_cast<int64_t>(row) * header.cols + static_cast<int64_t>(col);
 
 	return GetValue<T>(index);
 }
 
 template <typename T>
-T DataCube::GetValue(idx_t index) {
-	if (index >= GetCubeSize()) {
+T DataCube::GetValue(int64_t index) {
+	if (index < 0) {
+		throw std::out_of_range("Index cannot be negative");
+	}
+	if (index >= static_cast<int64_t>(GetCubeSize())) {
 		throw std::out_of_range("Index is out of bounds");
 	}
 
 	EnsureRaw();
 
-	const idx_t byte_offset = sizeof(DataHeader) + (index * DataType::GetSizeBytes(header.data_type));
-	const auto value_ptr = data_buffer.GetData() + byte_offset;
+	const data_ptr_t data_ptr = data_buffer.GetData() + sizeof(DataHeader);
 
-	return *reinterpret_cast<const T *>(value_ptr);
+	const T value = DataCube::ReadValueAs<T>(header.data_type, data_ptr, index);
+	return value;
+}
+
+bool DataCube::GetBounds(int32_t band, RasterBounds &bounds) {
+	bounds = RasterBounds();
+	const size_t cube_size = GetCubeSize();
+
+	if (band < 0) {
+		throw std::out_of_range("Band index cannot be negative");
+	}
+	if (band >= header.bands) {
+		throw std::out_of_range("Band index is out of bounds");
+	}
+
+	if (cube_size == 0) {
+		return false;
+	}
+
+	EnsureRaw();
+
+	const data_ptr_t data_ptr = data_buffer.GetData() + sizeof(DataHeader);
+
+	idx_t start_index = static_cast<idx_t>(band) * header.cols * header.rows;
+	idx_t end_index = start_index + header.cols * header.rows;
+
+	for (idx_t i = start_index; i < end_index; i++) {
+		const double value = DataCube::ReadValueAs<double>(header.data_type, data_ptr, i);
+
+		if (!CubeCellValue::IsNoDataValue(value, header.no_data)) {
+			RasterCoord coord = CubeCellValue::GetCoord(header.bands, header.cols, header.rows, i);
+			bounds.Grow(coord);
+		}
+	}
+	return !bounds.IsEmpty();
 }
 
 bool DataCube::GetBounds(RasterBounds &bounds) {
 	bounds = RasterBounds();
-	const idx_t cube_size = GetCubeSize();
+	const size_t cube_size = GetCubeSize();
 
 	if (cube_size == 0) {
 		return false;
@@ -316,7 +392,7 @@ bool DataCube::GetBounds(RasterBounds &bounds) {
 	const data_ptr_t data_ptr = data_buffer.GetData() + sizeof(DataHeader);
 
 	for (idx_t i = 0; i < cube_size; i++) {
-		const double value = ReadValueAs<double>(header.data_type, data_ptr, i);
+		const double value = DataCube::ReadValueAs<double>(header.data_type, data_ptr, i);
 
 		if (!CubeCellValue::IsNoDataValue(value, header.no_data)) {
 			RasterCoord coord = CubeCellValue::GetCoord(header.bands, header.cols, header.rows, i);
@@ -327,7 +403,7 @@ bool DataCube::GetBounds(RasterBounds &bounds) {
 }
 
 bool DataCube::IsNullOrEmpty() {
-	const idx_t cube_size = GetCubeSize();
+	const size_t cube_size = GetCubeSize();
 
 	if (cube_size == 0) {
 		return true;
@@ -348,28 +424,28 @@ bool DataCube::IsNullOrEmpty() {
 }
 
 template <typename T>
-T DataCube::ReadValueAs(DataType::Value data_type, const data_ptr_t data_ptr, idx_t value_index) {
+T DataCube::ReadValueAs(DataType::Value data_type, const data_ptr_t data_ptr, int64_t index) {
 	switch (data_type) {
 	case DataType::Value::UINT8:
-		return static_cast<T>(*reinterpret_cast<const uint8_t *>(data_ptr + value_index * sizeof(uint8_t)));
+		return static_cast<T>(*reinterpret_cast<const uint8_t *>(data_ptr + index * sizeof(uint8_t)));
 	case DataType::Value::INT8:
-		return static_cast<T>(*reinterpret_cast<const int8_t *>(data_ptr + value_index * sizeof(int8_t)));
+		return static_cast<T>(*reinterpret_cast<const int8_t *>(data_ptr + index * sizeof(int8_t)));
 	case DataType::Value::UINT16:
-		return static_cast<T>(*reinterpret_cast<const uint16_t *>(data_ptr + value_index * sizeof(uint16_t)));
+		return static_cast<T>(*reinterpret_cast<const uint16_t *>(data_ptr + index * sizeof(uint16_t)));
 	case DataType::Value::INT16:
-		return static_cast<T>(*reinterpret_cast<const int16_t *>(data_ptr + value_index * sizeof(int16_t)));
+		return static_cast<T>(*reinterpret_cast<const int16_t *>(data_ptr + index * sizeof(int16_t)));
 	case DataType::Value::UINT32:
-		return static_cast<T>(*reinterpret_cast<const uint32_t *>(data_ptr + value_index * sizeof(uint32_t)));
+		return static_cast<T>(*reinterpret_cast<const uint32_t *>(data_ptr + index * sizeof(uint32_t)));
 	case DataType::Value::INT32:
-		return static_cast<T>(*reinterpret_cast<const int32_t *>(data_ptr + value_index * sizeof(int32_t)));
+		return static_cast<T>(*reinterpret_cast<const int32_t *>(data_ptr + index * sizeof(int32_t)));
 	case DataType::Value::UINT64:
-		return static_cast<T>(*reinterpret_cast<const uint64_t *>(data_ptr + value_index * sizeof(uint64_t)));
+		return static_cast<T>(*reinterpret_cast<const uint64_t *>(data_ptr + index * sizeof(uint64_t)));
 	case DataType::Value::INT64:
-		return static_cast<T>(*reinterpret_cast<const int64_t *>(data_ptr + value_index * sizeof(int64_t)));
+		return static_cast<T>(*reinterpret_cast<const int64_t *>(data_ptr + index * sizeof(int64_t)));
 	case DataType::Value::FLOAT:
-		return static_cast<T>(*reinterpret_cast<const float *>(data_ptr + value_index * sizeof(float)));
+		return static_cast<T>(*reinterpret_cast<const float *>(data_ptr + index * sizeof(float)));
 	case DataType::Value::DOUBLE:
-		return static_cast<T>(*reinterpret_cast<const double *>(data_ptr + value_index * sizeof(double)));
+		return static_cast<T>(*reinterpret_cast<const double *>(data_ptr + index * sizeof(double)));
 	default:
 		throw std::runtime_error("Unsupported DataType: " + DataType::ToString(data_type));
 	}
@@ -408,7 +484,7 @@ void DataCube::ChangeType(const DataType::Value &new_data_type) {
 		return;
 	}
 
-	const idx_t cube_size = GetCubeSize();
+	const size_t cube_size = GetCubeSize();
 
 	DataHeader temp_header = header;
 	temp_header.data_type = new_data_type;
@@ -479,7 +555,7 @@ void DataCube::EnsureRaw() {
 }
 
 void DataCube::Apply(const CubeUnaryCellFunc &func, DataCube &a, DataCube &r) {
-	const idx_t cube_size = a.GetCubeSize();
+	const size_t cube_size = a.GetCubeSize();
 
 	// If the cube is empty, just copy the header and return.
 	if (cube_size == 0) {
@@ -515,7 +591,7 @@ void DataCube::Apply(const CubeUnaryCellFunc &func, DataCube &a, DataCube &r) {
 }
 
 void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, DataCube &r) {
-	const idx_t cube_size = a.GetCubeSize();
+	const size_t cube_size = a.GetCubeSize();
 
 	// If the cube is empty, just copy the header and return.
 	if (cube_size == 0) {
@@ -567,7 +643,7 @@ void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, D
 }
 
 void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &b, DataCube &r) {
-	const idx_t cube_size = a.GetCubeSize();
+	const size_t cube_size = a.GetCubeSize();
 
 	// If the cube is empty, just copy the header and return.
 	if (cube_size == 0) {
@@ -604,8 +680,41 @@ void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &
 	r.data_buffer.SetPosition(sizeof(DataHeader) + cube_size * sizeof(double));
 }
 
+void DataCube::Apply(const CubeCellFunc &func, DataCube &a, int32_t band) {
+	const size_t cube_size = a.GetCubeSize();
+
+	if (band < 0) {
+		throw std::out_of_range("Band index cannot be negative");
+	}
+	if (band >= a.header.bands) {
+		throw std::out_of_range("Band index is out of bounds");
+	}
+
+	// If the cube is empty, return doing nothing.
+	if (cube_size == 0) {
+		return;
+	}
+
+	a.EnsureRaw();
+
+	data_ptr_t a_data_ptr = a.data_buffer.GetData() + sizeof(DataHeader);
+	const DataType::Value a_data_type = a.header.data_type;
+	CubeCellValue a_cell_val = {0, 0.0, a.header.no_data};
+
+	idx_t start_index = static_cast<idx_t>(band) * a.header.cols * a.header.rows;
+	idx_t end_index = start_index + a.header.cols * a.header.rows;
+
+	for (idx_t i = start_index; i < end_index; i++) {
+		a_cell_val.index = i;
+		a_cell_val.value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
+
+		// Call the cell function with the cell value.
+		func(a_cell_val);
+	}
+}
+
 void DataCube::Apply(const CubeCellFunc &func, DataCube &a) {
-	const idx_t cube_size = a.GetCubeSize();
+	const size_t cube_size = a.GetCubeSize();
 
 	// If the cube is empty, return doing nothing.
 	if (cube_size == 0) {
@@ -706,5 +815,29 @@ DataCube DataCube::operator/(double other) {
 
 	return result;
 }
+
+// Explicit template instantiations for DataCube::
+
+template uint8_t DataCube::GetValue<uint8_t>(int32_t, int32_t, int32_t);
+template int8_t DataCube::GetValue<int8_t>(int32_t, int32_t, int32_t);
+template uint16_t DataCube::GetValue<uint16_t>(int32_t, int32_t, int32_t);
+template int16_t DataCube::GetValue<int16_t>(int32_t, int32_t, int32_t);
+template uint32_t DataCube::GetValue<uint32_t>(int32_t, int32_t, int32_t);
+template int32_t DataCube::GetValue<int32_t>(int32_t, int32_t, int32_t);
+template uint64_t DataCube::GetValue<uint64_t>(int32_t, int32_t, int32_t);
+template int64_t DataCube::GetValue<int64_t>(int32_t, int32_t, int32_t);
+template float DataCube::GetValue<float>(int32_t, int32_t, int32_t);
+template double DataCube::GetValue<double>(int32_t, int32_t, int32_t);
+
+template uint8_t DataCube::GetValue<uint8_t>(int64_t);
+template int8_t DataCube::GetValue<int8_t>(int64_t);
+template uint16_t DataCube::GetValue<uint16_t>(int64_t);
+template int16_t DataCube::GetValue<int16_t>(int64_t);
+template uint32_t DataCube::GetValue<uint32_t>(int64_t);
+template int32_t DataCube::GetValue<int32_t>(int64_t);
+template uint64_t DataCube::GetValue<uint64_t>(int64_t);
+template int64_t DataCube::GetValue<int64_t>(int64_t);
+template float DataCube::GetValue<float>(int64_t);
+template double DataCube::GetValue<double>(int64_t);
 
 } // namespace duckdb

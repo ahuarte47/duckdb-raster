@@ -92,7 +92,7 @@ struct RT_Stats {
 	// Execute
 	//------------------------------------------------------------------------------------------------------------------
 
-	//! Calculate statistics of a band of a data cube.
+	//! Calculate statistics of a band in a data cube.
 	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
@@ -107,25 +107,26 @@ struct RT_Stats {
 			arg_cube.LoadBlob(blob);
 			arg_cube.EnsureRaw();
 
-			int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
+			// Validate the input parameters.
+
+			const int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
 			if (band_index < 0) {
-				throw std::runtime_error("Band index cannot be negative");
+				throw InvalidInputException("Band index cannot be negative");
 			}
+
 			const DataHeader header = arg_cube.GetHeader();
+
 			if (band_index >= header.bands) {
-				throw std::runtime_error("Band index out of range");
+				throw InvalidInputException("Band index out of range: %d >= %d", band_index, header.bands);
 			}
 
 			// Compute statistics for the specified band.
-			CubeStats stats;
-			auto stats_func = [&stats, &header, band_index](const CubeCellValue &v) {
-				int32_t index = v.GetBandIndex(header);
 
-				if (index == band_index) {
-					stats.Update(v);
-				}
+			CubeStats stats;
+			auto stats_func = [&stats](const CubeCellValue &v) {
+				stats.Update(v);
 			};
-			DataCube::Apply(stats_func, arg_cube);
+			DataCube::Apply(stats_func, arg_cube, band_index);
 
 			// Set the result.
 			result.SetValue(i, stats.ToValue());
@@ -139,8 +140,24 @@ struct RT_Stats {
 	static constexpr auto DESCRIPTION = R"(
 		Calculates statistics for a specific band (0-based index) of a datacube.
 
-		The returned STRUCT contains: minimum, maximum, mean, standard deviation,
-		count of valid (non-nodata) cells, and count of nodata cells.
+		The returned value is a `STRUCT` with the following fields:
+
+		| Field | Type | Description |
+		| ----- | ---- | ----------- |
+		| `minimum` | DOUBLE | Minimum pixel value among valid (non-nodata) cells. |
+		| `maximum` | DOUBLE | Maximum pixel value among valid (non-nodata) cells. |
+		| `sum` | DOUBLE | Sum of all valid pixel values. |
+		| `mean` | DOUBLE | Mean (average) of all valid pixel values. |
+		| `stddev` | DOUBLE | Population standard deviation of all valid pixel values. |
+		| `valid_count` | BIGINT | Number of valid (non-nodata) cells. |
+		| `nodata_count` | BIGINT | Number of nodata cells. |
+
+		Function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `databand` | DATACUBE | The datacube column to compute statistics for. |
+		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 	)";
 
 	static constexpr auto EXAMPLE = R"(
@@ -169,13 +186,15 @@ struct RT_Stats {
 //======================================================================================================================
 
 struct RT_Stats_Agg {
-	struct StatsAggState : RT_Stats::CubeStats {
+	//! State for the aggregate function.
+	struct FunctionAggState {
+		RT_Stats::CubeStats stats;
 		void Destroy() {
 		}
 	};
 
-	//! Aggregate version of RT_Stats, which computes the same statistics but across multiple datacubes.
-	struct StatsAggOp {
+	//! Aggregate version of RT_CubeStats, which computes the statistics but across multiple datacubes.
+	struct FunctionAggOp {
 		template <class STATE>
 		static void Initialize(STATE &state) {
 			new (&state) STATE();
@@ -188,50 +207,94 @@ struct RT_Stats_Agg {
 
 		template <class STATE, class OP>
 		static void Combine(const STATE &source, STATE &target, AggregateInputData &) {
-			// Merge two partial states (Statistics).
-			target.Update(source);
+			// Merge two partial states.
+			target.stats.Update(source.stats);
 		}
 
-		template <class A_TYPE, class B_TYPE, class STATE, class OP>
-		static void Operation(STATE &state, const A_TYPE &input, const B_TYPE &band_index,
-		                      AggregateBinaryInput &agg_input) {
-			// Process one input row:
-			// 	A_TYPE = string_t (BLOB/DATACUBE),
-			// 	B_TYPE = int32_t  (INTEGER band index)
-			DataCube arg_cube(agg_input.input.allocator.GetAllocator());
-			arg_cube.LoadBlob(const_data_ptr_cast(input.GetData()), input.GetSize());
-			arg_cube.EnsureRaw();
+		static void ScatterUpdate(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count,
+		                          Vector &input_states, idx_t count) {
+			D_ASSERT(input_count == 2);
 
-			const DataHeader header = arg_cube.GetHeader();
-			const int32_t band_idx = static_cast<int32_t>(band_index);
-			if (band_idx < 0) {
-				throw std::runtime_error("Band index cannot be negative");
-			}
-			if (band_idx >= header.bands) {
-				throw std::runtime_error("Band index out of range");
+			// Arguments:
+			//	ARG1_TYPE = string_t (BLOB/DATACUBE blob)
+			//	ARG2_TYPE = int32_t  (band)
+
+			UnifiedVectorFormat state_data;
+			input_states.ToUnifiedFormat(count, state_data);
+
+			UnifiedVectorFormat input_data[2];
+			for (idx_t j = 0; j < 2; j++) {
+				inputs[j].ToUnifiedFormat(count, input_data[j]);
 			}
 
-			// Accumulate stats for all cells using Welford's online algorithm.
-			auto stats_func = [&state, &header, band_index](const CubeCellValue &v) {
-				int32_t index = v.GetBandIndex(header);
+			auto states = UnifiedVectorFormat::GetData<data_ptr_t>(state_data);
+			auto param0 = UnifiedVectorFormat::GetData<string_t>(input_data[0]);
+			auto param1 = UnifiedVectorFormat::GetData<int32_t>(input_data[1]);
 
-				if (index == band_index) {
-					state.Update(v);
+			DataCube arg_cube(aggr_input_data.allocator.GetAllocator());
+
+			for (idx_t i = 0; i < count; i++) {
+				auto state_idx = state_data.sel->get_index(i);
+
+				// Check if we must skip this row.
+
+				bool row_valid = state_data.validity.RowIsValid(state_idx);
+				if (!row_valid) {
+					continue;
 				}
-			};
-			DataCube::Apply(stats_func, arg_cube);
+				for (idx_t j = 0; j < 2; j++) {
+					auto input_idx = input_data[j].sel->get_index(i);
+
+					if (!input_data[j].validity.RowIsValid(input_idx)) {
+						row_valid = false;
+						break;
+					}
+				}
+				if (!row_valid) {
+					continue;
+				}
+
+				// Get the input parameters for this row.
+
+				auto &state = *reinterpret_cast<FunctionAggState *>(states[state_idx]);
+				const string_t &blob = param0[input_data[0].sel->get_index(i)];
+				const int32_t band_index = param1[input_data[1].sel->get_index(i)];
+
+				arg_cube.LoadBlob(const_data_ptr_cast(blob.GetData()), blob.GetSize());
+				arg_cube.EnsureRaw();
+
+				// Validate the input parameters.
+
+				if (band_index < 0) {
+					throw InvalidInputException("Band index cannot be negative");
+				}
+
+				const DataHeader header = arg_cube.GetHeader();
+
+				if (band_index >= header.bands) {
+					throw InvalidInputException("Band index out of range: %d >= %d", band_index, header.bands);
+				}
+
+				// Compute statistics for the specified band and update the state.
+
+				auto stats_func = [&state](const CubeCellValue &v) {
+					state.stats.Update(v);
+				};
+				DataCube::Apply(stats_func, arg_cube, band_index);
+			}
 		}
 
-		template <class INPUT_TYPE, class OPTS_TYPE, class STATE, class OP>
-		static void ConstantOperation(STATE &state, const INPUT_TYPE &input, const OPTS_TYPE &opts,
-		                              AggregateBinaryInput &agg_input, idx_t) {
-			Operation<INPUT_TYPE, OPTS_TYPE, STATE, OP>(state, input, opts, agg_input);
+		static void SimpleUpdate(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count,
+		                         data_ptr_t state_p, idx_t count) {
+			Vector states(Value::POINTER(CastPointerToValue(state_p)));
+			ScatterUpdate(inputs, aggr_input_data, input_count, states, count);
 		}
 
 		template <class STATE>
 		static void Finalize(STATE &state, AggregateFinalizeData &finalize_data) {
-			//! Produce the final STATS struct.
-			finalize_data.result.SetValue(finalize_data.result_idx, state.ToValue());
+			//! Produce the final result.
+			auto r = state.stats.ToValue();
+			finalize_data.result.SetValue(finalize_data.result_idx, r);
 		}
 
 		static bool IgnoreNull() {
@@ -246,12 +309,28 @@ struct RT_Stats_Agg {
 	static constexpr auto DESCRIPTION = R"(
 		Calculates statistics for a specific band (0-based index) in a set of datacubes.
 
-		The returned STRUCT contains: minimum, maximum, mean, standard deviation,
-		count of valid (non-nodata) cells, and count of nodata cells.
+		The returned value is a `STRUCT` with the following fields:
+
+		| Field | Type | Description |
+		| ----- | ---- | ----------- |
+		| `minimum` | DOUBLE | Minimum pixel value among valid (non-nodata) cells. |
+		| `maximum` | DOUBLE | Maximum pixel value among valid (non-nodata) cells. |
+		| `sum` | DOUBLE | Sum of all valid pixel values. |
+		| `mean` | DOUBLE | Mean (average) of all valid pixel values. |
+		| `stddev` | DOUBLE | Population standard deviation of all valid pixel values. |
+		| `valid_count` | BIGINT | Number of valid (non-nodata) cells. |
+		| `nodata_count` | BIGINT | Number of nodata cells. |
+
+		Function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `databand` | DATACUBE | The datacube column to compute statistics for. |
+		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		SELECT RT_CubeStats_Agg(databand_1, 0) FROM RT_Read('some/file/path/filename.tif');
+		SELECT RT_CubeStats_Agg(databand_1, 0) AS stats FROM RT_Read('some/file/path/filename.tif');
 	)";
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -263,13 +342,12 @@ struct RT_Stats_Agg {
 		tags.insert("ext", "raster");
 		tags.insert("category", "aggregate");
 
-		AggregateFunction fun("RT_CubeStats_Agg", {RasterTypes::DATACUBE(), LogicalType::INTEGER}, RasterTypes::STATS(),
-		                      AggregateFunction::StateSize<StatsAggState>,
-		                      AggregateFunction::StateInitialize<StatsAggState, StatsAggOp>,
-		                      AggregateFunction::BinaryScatterUpdate<StatsAggState, string_t, int32_t, StatsAggOp>,
-		                      AggregateFunction::StateCombine<StatsAggState, StatsAggOp>,
-		                      AggregateFunction::StateVoidFinalize<StatsAggState, StatsAggOp>,
-		                      AggregateFunction::BinaryUpdate<StatsAggState, string_t, int32_t, StatsAggOp>);
+		AggregateFunction fun(
+		    "RT_CubeStats_Agg", {RasterTypes::DATACUBE(), LogicalType::INTEGER}, RasterTypes::STATS(),
+		    AggregateFunction::StateSize<FunctionAggState>,
+		    AggregateFunction::StateInitialize<FunctionAggState, FunctionAggOp>, FunctionAggOp::ScatterUpdate,
+		    AggregateFunction::StateCombine<FunctionAggState, FunctionAggOp>,
+		    AggregateFunction::StateVoidFinalize<FunctionAggState, FunctionAggOp>, FunctionAggOp::SimpleUpdate);
 
 		RegisterFunction<AggregateFunction>(loader, fun, CatalogType::AGGREGATE_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
 		                                    tags);

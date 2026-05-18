@@ -39,8 +39,18 @@ public:
 	//! Get the last error message from GDAL as a string.
 	static std::string GetLastGdalErrorMsg();
 
-	//! Convert raster pixel coordinate to geographic 2D coordinate.
-	static Point2D RasterCoordToWorldCoord(const double matrix[6], const int32_t &col, const int32_t &row);
+	//! Convert raster raster coordinate to geographic world coordinate.
+	static Point2D RasterCoordToWorldCoord(const double (&matrix)[6], const int32_t &col, const int32_t &row);
+	//! Convert raster raster coordinate to geographic world coordinate.
+	static Point2D RasterCoordToWorldCoord(const double (&matrix)[6], const RasterCoord &coord);
+
+	//! Convert geographic world coordinate to raster raster coordinate.
+	static RasterCoord WorldCoordToRasterCoord(const double (&matrix)[6], const double &x, const double &y);
+	//! Convert geographic world coordinate to raster raster coordinate.
+	static RasterCoord WorldCoordToRasterCoord(const double (&matrix)[6], const Point2D &coord);
+
+	//! Build a RasterTransformMatrix from tile metadata.
+	static RasterTransformMatrix GetTransformMatrix(const string &metadata);
 
 	//! Get the SRID from a WKT projection definition, returns 0 if it cannot be determined.
 	static int GetSrid(const char *proj_def);
@@ -54,6 +64,9 @@ public:
 	static DataType::Value GdalTypeToDataType(const GDALDataType &data_type);
 	//! Convert a DataType to the corresponding GDALDataType.
 	static GDALDataType DataTypeToGdalType(const DataType::Value &data_type);
+
+	//! Convert a GDALDataType to the corresponding LogicalType.
+	static LogicalType GdalTypeToLogicalType(const GDALDataType &data_type);
 };
 
 } // namespace duckdb

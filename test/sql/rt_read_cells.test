@@ -1,0 +1,55 @@
+# name: test/sql/rt_read_cells.test
+# description: test raster extension
+# group: [sql]
+
+require raster
+
+query I
+SELECT
+    COUNT(id)
+FROM
+    RT_ReadCells('./test/data/overlay-sample.tiff')
+;
+----
+57600
+
+query IIII
+SELECT
+    min(x) AS xmin,
+    min(y) AS ymin,
+    max(x) AS xmax,
+    max(y) AS ymax
+FROM
+    RT_ReadCells('./test/data/overlay-sample.tiff')
+;
+----
+545539.75	4724420.25	545699.75	4724510.25
+
+query IIIIIIIII
+SELECT
+    *
+FROM
+    RT_ReadCells('./test/data/overlay-sample.tiff')
+LIMIT 5 OFFSET 5
+;
+----
+5	5	0	545542.5	4724510.0	POINT (545542.5 4724510)	159	142	112
+6	6	0	545543.0	4724510.0	POINT (545543 4724510)	170	158	120
+7	7	0	545543.5	4724510.0	POINT (545543.5 4724510)	107	135	84
+8	8	0	545544.0	4724510.0	POINT (545544 4724510)	102	152	93
+9	9	0	545544.5	4724510.0	POINT (545544.5 4724510)	115	165	106
+
+query IIIIIIIII
+SELECT
+    *
+FROM
+    RT_ReadCells('./test/data/overlay-sample.tiff')
+WHERE
+    ((id >= 5 AND id <= 7) AND x <> 0) OR (y > 0 AND id IN (11,12))
+;
+----
+5	5	0	545542.5	4724510.0	POINT (545542.5 4724510)	159	142	112
+6	6	0	545543.0	4724510.0	POINT (545543 4724510)	170	158	120
+7	7	0	545543.5	4724510.0	POINT (545543.5 4724510)	107	135	84
+11	11	0	545545.5	4724510.0	POINT (545545.5 4724510)	76	124	66
+12	12	0	545546.0	4724510.0	POINT (545546 4724510)	51	99	41
