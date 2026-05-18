@@ -942,17 +942,17 @@ struct RT_Read {
 		+ `metadata` is a JSON column with the raster file metadata: band properties (data type, nodata value, etc.), spatial reference system, geotransform, and any driver-specific metadata.
 		+ `databand_1`, `databand_2`, … are BLOB columns, each holding the pixel data for one raster band together with a small binary header that describes the tile layout. When the `datacube` option is `true`, a single `datacube` column is returned instead, containing all bands in the same BLOB format.
 
-	    Note that GDAL is single-threaded, so this table function cannot fully exploit DuckDB parallelism.
+		Note that GDAL is single-threaded, so this table function cannot fully exploit DuckDB parallelism.
 
-	    The raster extension also provides "replacement scans" for common raster file formats, allowing you to query these files as if they were tables:
+		The raster extension also provides "replacement scans" for common raster file formats, allowing you to query these files as if they were tables:
 
-	    ```sql
-	    SELECT * FROM './path/to/some/file.tif';
-	    ```
+		```sql
+		SELECT * FROM './path/to/some/file.tif';
+		```
 
-	    This is syntax sugar for `RT_Read`. To pass additional options, use `RT_Read` directly.
+		This is syntax sugar for `RT_Read`. To pass additional options, use `RT_Read` directly.
 
-	    The following formats are recognised by their file extension:
+		The following formats are recognised by their file extension:
 
 		| Format | Extension |
 		| ------ | --------- |
@@ -1551,7 +1551,6 @@ struct RT_ReadCells {
 		| `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
 		| `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. Only for single-file version of the function. |
 		| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
-		| `skip_empty_tiles` | BOOLEAN | When `true`, tiles that contain no data are omitted from the output (checks the `GDAL_DATA_COVERAGE_STATUS_DATA` flag when supported). `true` is the default. |
 
 		This is the list of columns returned by `RT_ReadCells`:
 
@@ -1563,7 +1562,7 @@ struct RT_ReadCells {
 		+ `row` is the row index of each cell in the raster, where 0 is the topmost row.
 		+ `band_1`, `band_2`, … are numeric columns, each containing the pixel values of a cell in the raster. The number of bands depends on the input file, and the data type depends on the raster data type.
 
-	    Note that GDAL is single-threaded, so this table function cannot fully exploit DuckDB parallelism.
+		Note that GDAL is single-threaded, so this table function cannot fully exploit DuckDB parallelism.
 	)";
 
 	static constexpr auto EXAMPLE = R"(

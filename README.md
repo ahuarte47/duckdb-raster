@@ -36,6 +36,7 @@ LOAD raster;
 | --- | --- |
 | [`RT_Drivers`](docs/functions.md#rt_drivers) | Returns the list of supported GDAL raster drivers and file formats. |
 | [`RT_Read`](docs/functions.md#rt_read) | Reads a raster file (or a mosaic of raster files) and returns a table with the raster data. |
+| [`RT_ReadCells`](docs/functions.md#rt_readcells) | Reads a raster file (or a mosaic of raster files) and returns a table with one row per value cell in the raster. |
 | [`RT_Write`](docs/functions.md#rt_write) | (`COPY TO`) Exports a data table to a new raster file. |
 
 **[Scalar Functions](docs/functions.md#scalar-functions)**
@@ -168,6 +169,17 @@ SELECT
     RT_Polygon(databand_1, tile_x, tile_y, metadata) AS geometry
 FROM
     RT_Read('path/to/raster/file.tif')
+;
+```
+
+You can also read raster data at the pixel level using the `RT_ReadCells` function, which returns one row per value cell in the raster, along with its pixels and spatial coordinates.
+
+```sql
+-- Read raster file at the pixel level, one row per value cell with one column per band
+SELECT
+	id, x, y, geometry, pixel_x, pixel_y, band_1, band_2, band_3
+FROM
+	RT_ReadCells('path/to/raster/file.tif')
 ;
 ```
 

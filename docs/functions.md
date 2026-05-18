@@ -8,6 +8,7 @@
 | --- | --- |
 | [`RT_Drivers`](#rt_drivers) | Returns the list of supported GDAL RASTER drivers and file formats. |
 | [`RT_Read`](#rt_read) | Reads a raster file (or a mosaic of raster files) and returns a table with the raster data. |
+| [`RT_ReadCells`](#rt_readcells) | Reads a raster file (or a mosaic of raster files) and returns a table with one row per value cell in the raster. |
 | [`RT_Write`](#rt_write) | (`COPY TO`) Exports the data table to a new raster file. |
 
 **[Scalar Functions](#scalar-functions)**
@@ -183,6 +184,60 @@ FROM
         'path/to/mosaic/raster-clip10.tif',
         'path/to/mosaic/raster-clip11.tif'
     ])
+;
+```
+
+----
+
+### RT_ReadCells
+
+Reads a raster file (or a mosaic of raster files) and returns a table with one row per value cell in the raster.
+
+The `RT_ReadCells` table function is based on the [GDAL](https://gdal.org/index.html) translator library and enables reading raster data from a variety of geospatial raster file formats as if they were DuckDB tables.
+
+> See [RT_Drivers](#rt_drivers) for a list of supported file formats and drivers.
+
+The `RT_ReadCells` function accepts parameters, most of them optional:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `path` | VARCHAR | The path to the file to read. The only mandatory parameter. |
+| `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
+| `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
+| `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. Only for single-file version of the function. |
+| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
+
+This is the list of columns returned by `RT_ReadCells`:
+
++ `id` is a unique identifier for each cell of the raster.
++ `x` the coordinates of the center of each cell in the raster. The coordinate reference system is the same as the one of the raster file.
++ `y` the coordinates of the center of each cell in the raster. The coordinate reference system is the same as the one of the raster file.
++ `geometry` is the point geometry of each cell.
++ `col` is the column index of each cell in the raster, where 0 is the leftmost column.
++ `row` is the row index of each cell in the raster, where 0 is the topmost row.
++ `band_1`, `band_2`, … are numeric columns, each containing the pixel values of a cell in the raster. The number of bands depends on the input file, and the data type depends on the raster data type.
+
+Note that GDAL is single-threaded, so this table function cannot fully exploit DuckDB parallelism.
+
+`RT_ReadCells` supports filter pushdown on all non-BLOB columns. Use the `x` and `y` columns or the `geometry` column to spatially filter tiles before the pixel data is loaded, which avoids reading unnecessary data from disk.
+
+#### Signature
+
+```sql
+RT_ReadCells (file_path [VARCHAR, VARCHAR[]],
+              open_options VARCHAR[] DEFAULT NULL,
+              allowed_drivers VARCHAR[] DEFAULT NULL,
+              sibling_files VARCHAR[] DEFAULT NULL,
+              separate_bands BOOLEAN DEFAULT false)
+```
+
+#### Examples
+
+```sql
+SELECT
+    id, x, y, geometry, col, row, band_1, band_2, band_3
+FROM
+    RT_ReadCells('path/to/raster/file.tif')
 ;
 ```
 
