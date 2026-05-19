@@ -56,7 +56,9 @@ LOAD raster;
 | Function | Summary |
 | --- | --- |
 | [`RT_RasterValue`](docs/functions.md#rt_rastervalue) | Returns the value in a datacube at the specified pixel coordinates. |
+| [`RT_RasterValues`](docs/functions.md#rt_rastervalues) | Returns the values in a band of a datacube at the specified array of pixel coordinates. |
 | [`RT_CoordValue`](docs/functions.md#rt_coordvalue) | Returns the value in a datacube at the specified world coordinates. |
+| [`RT_CoordValues`](docs/functions.md#rt_coordvalues) | Returns the values in a band of a datacube at the specified array of world coordinates. |
 | [`RT_Envelope`](docs/functions.md#rt_envelope) | Computes the bounding box of the valid (non-no-data) cells in the input datacube for a specific band and returns it as a geometry. |
 | [`RT_Polygon`](docs/functions.md#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values for a specific band in the datacube. |
 | [`RT_CubeClip`](docs/functions.md#rt_cubeclip) | Returns a datacube where cells outside the given geometry are replaced by the specified value. |

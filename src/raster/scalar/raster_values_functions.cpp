@@ -13,7 +13,28 @@ namespace duckdb {
 namespace {
 
 //======================================================================================================================
-// RT_RasterValue
+// Utilities
+//======================================================================================================================
+
+//! Extracts an array of values from a Value, validating that it is a non-null LIST of the expected type.
+static const duckdb::vector<Value> &ExtractArray(const Value &in_array, const LogicalType &expected_type) {
+	if (in_array.IsNull()) {
+		throw InvalidInputException("Cannot convert NULL array to stream");
+	}
+	if (in_array.type().id() != LogicalTypeId::LIST) {
+		throw InvalidInputException("Expected a LIST value, but got " + in_array.type().ToString());
+	}
+
+	const auto &children = ListValue::GetChildren(in_array);
+
+	if (children.size() > 0 && children[0].type() != expected_type) {
+		throw InvalidInputException("Column and row arrays must have the same length");
+	}
+	return children;
+}
+
+//======================================================================================================================
+// RT_RasterValue[s]
 //======================================================================================================================
 
 struct RT_RasterValue {
@@ -34,7 +55,7 @@ struct RT_RasterValue {
 			Value blob = args.data[0].GetValue(i);
 			const double default_value = args.data[4].GetValue(i).GetValue<double>();
 
-			// Validate the input pixel coordinates.
+			// Validate the input parameters.
 
 			const int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
 			if (band_index < 0) {
@@ -112,6 +133,115 @@ struct RT_RasterValue {
 		                              {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
 		                               LogicalType::INTEGER, LogicalType::DOUBLE},
 		                              LogicalType::DOUBLE, Execute);
+
+		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
+		                                 tags);
+	}
+};
+
+struct RT_RasterValues {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Returns the values in a band of a datacube at the specified array of pixel coordinates (columns, rows).
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 5);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+
+		// We loop over rows manually to share the same DataCube instance.
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+			const double default_value = args.data[4].GetValue(i).GetValue<double>();
+
+			duckdb::vector<Value> values;
+
+			// Validate the input parameters.
+
+			const int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
+			if (band_index < 0) {
+				throw InvalidInputException("Band index cannot be negative");
+			}
+
+			Value cols_value = args.data[2].GetValue(i);
+			Value rows_value = args.data[3].GetValue(i);
+			const auto &cols = ExtractArray(cols_value, LogicalType::INTEGER);
+			const auto &rows = ExtractArray(rows_value, LogicalType::INTEGER);
+
+			if (cols.size() != rows.size()) {
+				throw InvalidInputException("Column and row arrays must have the same length");
+			}
+			if (cols.size() == 0) {
+				result.SetValue(i, Value::LIST(LogicalType::DOUBLE, std::move(values)));
+				continue;
+			}
+
+			DataHeader header = DataCube::ReadHeader(blob);
+
+			if (band_index >= header.bands) {
+				throw InvalidInputException("Band index out of range: %d >= %d", band_index, header.bands);
+			}
+
+			// Extract the values at the specified coordinates and return them as a list.
+
+			arg_cube.LoadBlob(blob);
+			arg_cube.EnsureRaw();
+
+			for (idx_t j = 0; j < cols.size(); j++) {
+				const int32_t col = cols[j].GetValue<int32_t>();
+				const int32_t row = rows[j].GetValue<int32_t>();
+
+				if (col < 0 || row < 0 || col >= header.cols || row >= header.rows) {
+					values.push_back(Value::DOUBLE(default_value));
+				} else {
+					double value = arg_cube.GetValue<double>(band_index, col, row);
+					values.push_back(Value::DOUBLE(value));
+				}
+			}
+
+			result.SetValue(i, Value::LIST(LogicalType::DOUBLE, std::move(values)));
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Returns the values in a band of a datacube at the specified array of pixel coordinates (columns, rows).
+
+		The function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `databand` | DATACUBE | The input datacube column. |
+		| `band` | INTEGER | The 0-based index of the band to read the value from. |
+		| `cols` | INTEGER[] | The pixel column indices within the tile. |
+		| `rows` | INTEGER[] | The pixel row indices within the tile. |
+		| `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT RT_RasterValues(databand_1, 0, [10,25], [20,44], -9999.0) FROM RT_Read('some/file/path/filename.tif');
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "scalar");
+
+		const ScalarFunction function("RT_RasterValues",
+		                              {RasterTypes::DATACUBE(), LogicalType::INTEGER,
+		                               LogicalType::LIST(LogicalType::INTEGER), LogicalType::LIST(LogicalType::INTEGER),
+		                               LogicalType::DOUBLE},
+		                              LogicalType::LIST(LogicalType::DOUBLE), Execute);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
 		                                 tags);
@@ -337,7 +467,7 @@ struct RT_RasterValue_Agg {
 };
 
 //======================================================================================================================
-// RT_CoordValue
+// RT_CoordValue[s]
 //======================================================================================================================
 
 struct RT_CoordValue {
@@ -435,6 +565,131 @@ struct RT_CoordValue {
 		                              {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::DOUBLE,
 		                               LogicalType::DOUBLE, LogicalType::JSON(), LogicalType::DOUBLE},
 		                              LogicalType::DOUBLE, Execute);
+
+		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
+		                                 tags);
+	}
+};
+
+struct RT_CoordValues {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Returns the value in a band of a datacube at the given world coordinates (x, y).
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 6);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+
+		RasterTransformMatrix matrix;
+		std::string matrix_str;
+
+		// We loop over rows manually to share the same DataCube instance.
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+			const double default_value = args.data[5].GetValue(i).GetValue<double>();
+
+			duckdb::vector<Value> values;
+
+			// Validate the input parameters.
+
+			const int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
+			if (band_index < 0) {
+				throw InvalidInputException("Band index cannot be negative");
+			}
+
+			Value xs_value = args.data[2].GetValue(i);
+			Value ys_value = args.data[3].GetValue(i);
+			const auto &xs = ExtractArray(xs_value, LogicalType::DOUBLE);
+			const auto &ys = ExtractArray(ys_value, LogicalType::DOUBLE);
+
+			if (xs.size() != ys.size()) {
+				throw InvalidInputException("x and y arrays must have the same length");
+			}
+			if (xs.size() == 0) {
+				result.SetValue(i, Value::LIST(LogicalType::DOUBLE, std::move(values)));
+				continue;
+			}
+
+			DataHeader header = DataCube::ReadHeader(blob);
+
+			if (band_index >= header.bands) {
+				throw InvalidInputException("Band index out of range: %d >= %d", band_index, header.bands);
+			}
+
+			std::string metadata = args.data[4].GetValue(i).GetValue<string>();
+			if (metadata != matrix_str) {
+				matrix = RasterUtils::GetTransformMatrix(metadata);
+				matrix_str = metadata;
+			}
+
+			// Extract the values at the specified coordinates and return them as a list.
+
+			arg_cube.LoadBlob(blob);
+			arg_cube.EnsureRaw();
+
+			for (idx_t j = 0; j < xs.size(); j++) {
+				const double x = xs[j].GetValue<double>();
+				const double y = ys[j].GetValue<double>();
+
+				RasterCoord coord = RasterUtils::WorldCoordToRasterCoord(matrix.affine, x, y);
+
+				if (coord.col < 0 || coord.row < 0 || coord.col >= header.cols || coord.row >= header.rows) {
+					values.push_back(Value::DOUBLE(default_value));
+				} else {
+					double value = arg_cube.GetValue<double>(band_index, coord.col, coord.row);
+					values.push_back(Value::DOUBLE(value));
+				}
+			}
+
+			result.SetValue(i, Value::LIST(LogicalType::DOUBLE, std::move(values)));
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Returns the values in a band of a datacube at the specified array of world coordinates (x, y).
+
+		The function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `databand` | DATACUBE | The input datacube column. |
+		| `band` | INTEGER | The 0-based index of the band to read the value from. |
+		| `xs` | DOUBLE[] | The array of x-coordinates of the pixels within the tile. |
+		| `ys` | DOUBLE[] | The array of y-coordinates of the pixels within the tile. |
+		| `metadata` | JSON | The metadata associated with the datacube. |
+		| `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT
+			RT_CoordValues(databand_1, 0, [-1.28,-1.27], [42.25,42.26], metadata, -9999.0)
+		FROM
+			RT_Read('some/file/path/filename.tif')
+		;
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "scalar");
+
+		const ScalarFunction function("RT_CoordValues",
+		                              {RasterTypes::DATACUBE(), LogicalType::INTEGER,
+		                               LogicalType::LIST(LogicalType::DOUBLE), LogicalType::LIST(LogicalType::DOUBLE),
+		                               LogicalType::JSON(), LogicalType::DOUBLE},
+		                              LogicalType::LIST(LogicalType::DOUBLE), Execute);
 
 		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
 		                                 tags);
@@ -665,8 +920,10 @@ struct RT_CoordValue_Agg {
 void RasterValuesFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
 	RT_RasterValue::Register(loader);
+	RT_RasterValues::Register(loader);
 	RT_RasterValue_Agg::Register(loader);
 	RT_CoordValue::Register(loader);
+	RT_CoordValues::Register(loader);
 	RT_CoordValue_Agg::Register(loader);
 }
 
