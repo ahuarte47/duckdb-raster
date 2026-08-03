@@ -27,14 +27,14 @@
 
 | Function | Summary |
 | --- | --- |
-| [`RT_RasterValue`](docs/#rt_rastervalue) | Returns the value in a specified band of a datacube at the specified pixel coordinates (column, row). |
-| [`RT_RasterValues`](docs/#rt_rastervalues) | Returns the values in a band of a datacube at the specified array of pixel coordinates (column, row). |
-| [`RT_CoordValue`](docs/#rt_coordvalue) | Returns the value in a specified band of a datacube at the specified world coordinates (x, y). |
-| [`RT_CoordValues`](docs/#rt_coordvalues) | Returns the values in a band of a datacube at the specified array of world coordinates (x, y). |
-| [`RT_Envelope`](docs/#rt_envelope) | Computes the bounding box of the valid (non-no-data) cells in the input datacube for a specific band and returns it as a geometry. |
-| [`RT_Polygon`](docs/#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values for a specific band in the datacube. |
-| [`RT_CubeClip`](docs/#rt_cubeclip) | Returns a datacube where cells outside the given geometry are replaced by the specified value. |
-| [`RT_CubeBurn`](docs/#rt_cubeburn) | Returns a datacube where cells inside the given geometry are replaced by the specified value. |
+| [`RT_RasterValue`](#rt_rastervalue) | Returns the value in a specified band of a datacube at the specified pixel coordinates (column, row). |
+| [`RT_RasterValues`](#rt_rastervalues) | Returns the values in a band of a datacube at the specified array of pixel coordinates (column, row). |
+| [`RT_CoordValue`](#rt_coordvalue) | Returns the value in a specified band of a datacube at the specified world coordinates (x, y). |
+| [`RT_CoordValues`](#rt_coordvalues) | Returns the values in a band of a datacube at the specified array of world coordinates (x, y). |
+| [`RT_Envelope`](#rt_envelope) | Computes the bounding box of the valid (non-no-data) cells in the input datacube for a specific band and returns it as a geometry. |
+| [`RT_Polygon`](#rt_polygon) | Creates a polygon geometry for each contiguous region of non-no-data values for a specific band in the datacube. |
+| [`RT_CubeClip`](#rt_cubeclip) | Returns a datacube where cells outside the given geometry are replaced by the specified value. |
+| [`RT_CubeBurn`](#rt_cubeburn) | Returns a datacube where cells inside the given geometry are replaced by the specified value. |
 
 **[Aggregate Functions](#aggregate-functions)**
 
@@ -42,9 +42,9 @@ Aggregate functions operate on groups of rows (e.g. from a `GROUP BY` query) and
 
 | Function | Summary |
 | --- | --- |
-| [`RT_CubeStats_Agg`](docs/#rt_cubestats_agg) | Calculates statistics for a specific band (0-based index) in a set of datacubes. |
-| [`RT_RasterValue_Agg`](docs/#rt_rastervalue_agg) | Returns the value in a set of datacubes at the specified pixel coordinates (column, row). |
-| [`RT_CoordValue_Agg`](docs/#rt_coordvalue_agg) | Returns the value in a set of datacubes at the specified world coordinates (x, y). |
+| [`RT_CubeStats_Agg`](#rt_cubestats_agg) | Calculates statistics for a specific band (0-based index) in a set of datacubes. |
+| [`RT_RasterValue_Agg`](#rt_rastervalue_agg) | Returns the value in a set of datacubes at the specified pixel coordinates (column, row). |
+| [`RT_CoordValue_Agg`](#rt_coordvalue_agg) | Returns the value in a set of datacubes at the specified world coordinates (x, y). |
 
 ----
 
