@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+1.2.0
+++++++++++++++++++
+
+- New option in `RT_CubeStats` function to calculate statistics for a specific band (0-based index) in a set of datacubes, but only for those valid (non-nodata) cells that fall within a geometry (Zonal statistics).
+
 1.1.0
 ++++++++++++++++++
 

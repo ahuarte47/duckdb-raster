@@ -8,9 +8,66 @@
 #include "duckdb/catalog/catalog_entry/function_entry.hpp"
 #include "duckdb/function/scalar_function.hpp"
 
+// GEOS
+#include "geos_c.h"
+
 namespace duckdb {
 
 namespace {
+
+//======================================================================================================================
+// Types and helper functions
+//======================================================================================================================
+
+//! GEOS context for the spatial functions.
+class GEOSLocalState : public FunctionLocalState {
+public:
+	GEOSContextHandle_t ctx;
+
+	explicit GEOSLocalState() {
+		ctx = GEOS_init_r();
+
+		GEOSContext_setErrorMessageHandler_r(
+		    ctx, [](const char *msg, void *) { throw InvalidInputException("GEOS error: %s", msg); }, nullptr);
+	}
+	~GEOSLocalState() override {
+		GEOS_finish_r(ctx);
+	}
+};
+
+//! Create a polygon geometry from the provided corner points.
+static GEOSGeometry *CreatePolygon(GEOSContextHandle_t geos_ctx, const Point2D points[4]) {
+	GEOSCoordSequence *coord_seq = GEOSCoordSeq_create_r(geos_ctx, 5, 2);
+
+	if (!coord_seq) {
+		throw std::runtime_error("Failed to create GEOS coordinate sequence");
+	}
+
+	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 0, points[0].x);
+	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 0, points[0].y);
+	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 1, points[1].x);
+	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 1, points[1].y);
+	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 2, points[2].x);
+	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 2, points[2].y);
+	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 3, points[3].x);
+	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 3, points[3].y);
+	// Close the polygon by repeating the first point
+	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 4, points[0].x);
+	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 4, points[0].y);
+
+	GEOSGeometry *linear_ring = GEOSGeom_createLinearRing_r(geos_ctx, coord_seq);
+	if (!linear_ring) {
+		GEOSCoordSeq_destroy_r(geos_ctx, coord_seq);
+		throw std::runtime_error("Failed to create GEOS linear ring");
+	}
+
+	GEOSGeometry *polygon = GEOSGeom_createPolygon_r(geos_ctx, linear_ring, nullptr, 0);
+	if (!polygon) {
+		GEOSGeom_destroy_r(geos_ctx, linear_ring);
+		throw std::runtime_error("Failed to create GEOS polygon");
+	}
+	return polygon;
+}
 
 //======================================================================================================================
 // RT_Stats
@@ -89,6 +146,15 @@ struct RT_Stats {
 	};
 
 	//------------------------------------------------------------------------------------------------------------------
+	// Init Local (Only for the ExecuteGeom function)
+	//------------------------------------------------------------------------------------------------------------------
+
+	static unique_ptr<FunctionLocalState> InitLocal(ExpressionState &state, const BoundFunctionExpression &expr,
+	                                                FunctionData *bind_data) {
+		return make_uniq<GEOSLocalState>();
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Execute
 	//------------------------------------------------------------------------------------------------------------------
 
@@ -133,6 +199,140 @@ struct RT_Stats {
 		}
 	}
 
+	//! Calculate statistics of a band in a data cube for those valid (non-nodata) cells that fall within a geometry.
+	static void ExecuteGeom(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 6);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+
+		RasterTransformMatrix matrix;
+		std::string matrix_str;
+
+		// Functions to hold the spatial coordinates of cells for the current row.
+
+		GEOSLocalState &glocal_state = ExecuteFunctionState::GetFunctionState(state)->Cast<GEOSLocalState>();
+		GEOSContextHandle_t geos_ctx = glocal_state.ctx;
+
+		auto geometry_free = [geos_ctx](GEOSGeometry *g) {
+			if (g) {
+				GEOSGeom_destroy_r(geos_ctx, g);
+			}
+		};
+		auto prep_geom_free = [geos_ctx](const GEOSPreparedGeometry *g) {
+			if (g) {
+				GEOSPreparedGeom_destroy_r(geos_ctx, g);
+			}
+		};
+		auto wkb_reader_free = [geos_ctx](GEOSWKBReader *r) {
+			if (r) {
+				GEOSWKBReader_destroy_r(geos_ctx, r);
+			}
+		};
+
+		std::shared_ptr<GEOSWKBReader> wkb_reader(GEOSWKBReader_create_r(geos_ctx), wkb_reader_free);
+		std::unique_ptr<GEOSGeometry, decltype(geometry_free)> raw_geom(nullptr, geometry_free);
+		std::unique_ptr<const GEOSPreparedGeometry, decltype(prep_geom_free)> prep_geom(nullptr, prep_geom_free);
+		bool geometry_is_constant = false;
+		Point2D points[4];
+
+		auto extract_geometry = [&](Value arg_value, std::unique_ptr<GEOSGeometry, decltype(geometry_free)> &raw_geom,
+		                            std::unique_ptr<const GEOSPreparedGeometry, decltype(prep_geom_free)> &prep_geom) {
+			const string &wkb_str = StringValue::Get(arg_value);
+			const_data_ptr_t data_ptr = const_data_ptr_t(wkb_str.data());
+			raw_geom.reset(GEOSWKBReader_read_r(geos_ctx, wkb_reader.get(), data_ptr, wkb_str.size()));
+			if (!raw_geom) {
+				throw InvalidInputException("Failed to parse input geometry WKB");
+			}
+			prep_geom.reset(GEOSPrepare_r(geos_ctx, raw_geom.get()));
+		};
+
+		if (count > 0 && args.data[5].GetVectorType() == VectorType::CONSTANT_VECTOR) {
+			extract_geometry(args.data[5].GetValue(0), raw_geom, prep_geom);
+			geometry_is_constant = true;
+		}
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
+
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+
+			arg_cube.LoadBlob(blob);
+			arg_cube.EnsureRaw();
+
+			// Validate the input parameters.
+
+			const int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
+			if (band_index < 0) {
+				throw InvalidInputException("Band index cannot be negative");
+			}
+
+			const DataHeader header = arg_cube.GetHeader();
+
+			if (band_index >= header.bands) {
+				throw InvalidInputException("Band index out of range: %d >= %d", band_index, header.bands);
+			}
+
+			int32_t tile_x = args.data[2].GetValue(i).GetValue<int32_t>();
+			if (tile_x < 0) {
+				throw InvalidInputException("Tile X coordinate cannot be negative");
+			}
+
+			int32_t tile_y = args.data[3].GetValue(i).GetValue<int32_t>();
+			if (tile_y < 0) {
+				throw InvalidInputException("Tile Y coordinate cannot be negative");
+			}
+
+			std::string metadata = args.data[4].GetValue(i).GetValue<string>();
+			if (metadata != matrix_str) {
+				matrix = RasterUtils::GetTransformMatrix(metadata);
+				matrix_str = metadata;
+			}
+
+			const double(&gt)[6] = matrix.affine;
+			const int32_t &blocksize_x = matrix.blocksize_x;
+			const int32_t &blocksize_y = matrix.blocksize_y;
+
+			// Parse input geometry?
+			if (!geometry_is_constant) {
+				extract_geometry(args.data[5].GetValue(i), raw_geom, prep_geom);
+			}
+			if (!prep_geom) {
+				throw InvalidInputException("Failed to prepare geometry for row %lu", i);
+			}
+
+			// Compute zonal statistics for the specified band.
+
+			auto coord_to_polygon = [&](const RasterCoord &coord) {
+				int32_t tx = tile_x * blocksize_x + coord.col;
+				int32_t ty = tile_y * blocksize_y + coord.row;
+				points[0] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty);
+				points[1] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty + 1);
+				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty + 1);
+				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty);
+				return CreatePolygon(geos_ctx, points);
+			};
+
+			CubeStats stats;
+			auto stats_func = [&](const CubeCellValue &v) {
+				RasterCoord coord = v.GetCoord(header);
+
+				GEOSGeometry *polygon_ptr = coord_to_polygon(coord);
+				std::unique_ptr<GEOSGeometry, decltype(geometry_free)> polygon(polygon_ptr, geometry_free);
+
+				int inside = GEOSPreparedIntersects_r(geos_ctx, prep_geom.get(), polygon_ptr);
+				if (inside == 1) {
+					stats.Update(v);
+				}
+			};
+			DataCube::Apply(stats_func, arg_cube, band_index);
+
+			// Set the result.
+			result.SetValue(i, stats.ToValue());
+		}
+	}
+
 	//------------------------------------------------------------------------------------------------------------------
 	// Documentation
 	//------------------------------------------------------------------------------------------------------------------
@@ -152,16 +352,31 @@ struct RT_Stats {
 		| `valid_count` | BIGINT | Number of valid (non-nodata) cells. |
 		| `nodata_count` | BIGINT | Number of nodata cells. |
 
-		Function accepts the following parameters:
+		Function accepts two different forms with the following parameters.
+
+		Just to compute statistics for a specific band of a datacube:
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
 		| `databand` | DATACUBE | The datacube column to compute statistics for. |
 		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+
+		To compute statistics for a specific band of a datacube, but only for those valid (non-nodata)
+		cells that fall within a geometry (Zonal statistics):
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `databand` | DATACUBE | The datacube column to compute statistics for. |
+		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+		| `tile_x` | INTEGER | The tile x coordinate of the tile. |
+		| `tile_y` | INTEGER | The tile y coordinate of the tile. |
+		| `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size. |
+		| `geometry` | GEOMETRY | The geometry to use for spatial filtering. |
 	)";
 
 	static constexpr auto EXAMPLE = R"(
 		SELECT RT_CubeStats(databand, 0) AS stats FROM RT_Read('some/file/path/filename.tif');
+		SELECT RT_CubeStats(databand, 0, tile_x, tile_y, metadata, geometry) AS stats FROM RT_Read('some/file/path/filename.tif');
 	)";
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -173,11 +388,22 @@ struct RT_Stats {
 		tags.insert("ext", "raster");
 		tags.insert("category", "scalar");
 
-		const ScalarFunction function("RT_CubeStats", {RasterTypes::DATACUBE(), LogicalType::INTEGER},
-		                              RasterTypes::STATS(), Execute);
+		ScalarFunctionSet function_set("RT_CubeStats");
 
-		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
-		                                 tags);
+		const ScalarFunction func01 =
+		    ScalarFunction({RasterTypes::DATACUBE(), LogicalType::INTEGER}, RasterTypes::STATS(), Execute);
+
+		function_set.AddFunction(func01);
+
+		const ScalarFunction func02 =
+		    ScalarFunction({RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::INTEGER,
+		                    LogicalType::JSON(), LogicalType::GEOMETRY()},
+		                   RasterTypes::STATS(), ExecuteGeom, nullptr, nullptr, nullptr, InitLocal);
+
+		function_set.AddFunction(func02);
+
+		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
+		                                    EXAMPLE, tags);
 	}
 };
 

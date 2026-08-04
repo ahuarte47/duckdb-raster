@@ -624,17 +624,32 @@ The returned value is a `STRUCT` with the following fields:
 | `valid_count` | BIGINT | Number of valid (non-nodata) cells. |
 | `nodata_count` | BIGINT | Number of nodata cells. |
 
-Function accepts the following parameters:
+Function accepts two different forms with the following parameters.
+
+Just to compute statistics for a specific band of a datacube:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
 | `databand` | DATACUBE | The datacube column to compute statistics for. |
 | `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 
+To compute statistics for a specific band of a datacube, but only for those valid (non-nodata)
+cells that fall within a geometry (Zonal statistics):
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `databand` | DATACUBE | The datacube column to compute statistics for. |
+| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+| `tile_x` | INTEGER | The tile x coordinate of the tile. |
+| `tile_y` | INTEGER | The tile y coordinate of the tile. |
+| `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size. |
+| `geometry` | GEOMETRY | The geometry to use for spatial filtering. |
+
 #### Signature
 
 ```sql
 RT_CubeStats (datacube DATACUBE, band INTEGER)
+RT_CubeStats (datacube DATACUBE, band INTEGER, tile_x INTEGER, tile_y INTEGER, metadata JSON, geometry GEOMETRY)
 ```
 
 #### Examples
