@@ -13,64 +13,11 @@
 
 // GEOS
 #include "geos_c.h"
+#include "modules/geos_state.hpp"
 
 namespace duckdb {
 
 namespace {
-
-//======================================================================================================================
-// Types and helper functions
-//======================================================================================================================
-
-//! GEOS context for the spatial functions.
-class GEOSLocalState : public FunctionLocalState {
-public:
-	GEOSContextHandle_t ctx;
-
-	explicit GEOSLocalState() {
-		ctx = GEOS_init_r();
-
-		GEOSContext_setErrorMessageHandler_r(
-		    ctx, [](const char *msg, void *) { throw InvalidInputException("GEOS error: %s", msg); }, nullptr);
-	}
-	~GEOSLocalState() override {
-		GEOS_finish_r(ctx);
-	}
-};
-
-//! Create a polygon geometry from the provided corner points.
-static GEOSGeometry *CreatePolygon(GEOSContextHandle_t geos_ctx, const Point2D points[4]) {
-	GEOSCoordSequence *coord_seq = GEOSCoordSeq_create_r(geos_ctx, 5, 2);
-
-	if (!coord_seq) {
-		throw std::runtime_error("Failed to create GEOS coordinate sequence");
-	}
-
-	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 0, points[0].x);
-	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 0, points[0].y);
-	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 1, points[1].x);
-	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 1, points[1].y);
-	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 2, points[2].x);
-	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 2, points[2].y);
-	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 3, points[3].x);
-	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 3, points[3].y);
-	// Close the polygon by repeating the first point
-	GEOSCoordSeq_setX_r(geos_ctx, coord_seq, 4, points[0].x);
-	GEOSCoordSeq_setY_r(geos_ctx, coord_seq, 4, points[0].y);
-
-	GEOSGeometry *linear_ring = GEOSGeom_createLinearRing_r(geos_ctx, coord_seq);
-	if (!linear_ring) {
-		GEOSCoordSeq_destroy_r(geos_ctx, coord_seq);
-		throw std::runtime_error("Failed to create GEOS linear ring");
-	}
-
-	GEOSGeometry *polygon = GEOSGeom_createPolygon_r(geos_ctx, linear_ring, nullptr, 0);
-	if (!polygon) {
-		GEOSGeom_destroy_r(geos_ctx, linear_ring);
-		throw std::runtime_error("Failed to create GEOS polygon");
-	}
-	return polygon;
-}
 
 //======================================================================================================================
 // RT_Envelope
@@ -267,31 +214,6 @@ struct RT_Polygon {
 					GEOSGeom_destroy_r(geos_ctx, g);
 				}
 			};
-			auto wkb_writer_free = [geos_ctx](GEOSWKBWriter *w) {
-				if (w) {
-					GEOSWKBWriter_destroy_r(geos_ctx, w);
-				}
-			};
-			auto wkb_free = [geos_ctx](unsigned char *p) {
-				if (p) {
-					GEOSFree_r(geos_ctx, p);
-				}
-			};
-
-			std::shared_ptr<GEOSWKBWriter> wkb_writer(GEOSWKBWriter_create_r(geos_ctx), wkb_writer_free);
-			GEOSWKBWriter_setOutputDimension_r(geos_ctx, wkb_writer.get(), 2);
-
-			auto make_value = [geos_ctx, &wkb_writer, &wkb_free](GEOSGeometry *geom) {
-				size_t wkb_size = 0;
-				unsigned char *wkb_data = GEOSWKBWriter_write_r(geos_ctx, wkb_writer.get(), geom, &wkb_size);
-				if (!wkb_data) {
-					throw std::runtime_error("Failed to write geometry to WKB");
-				}
-				std::unique_ptr<unsigned char, decltype(wkb_free)> wkb_guard(wkb_data, wkb_free);
-				Value geometry_val = Value::BLOB(wkb_data, wkb_size);
-				geometry_val.Reinterpret(LogicalType::GEOMETRY());
-				return geometry_val;
-			};
 
 			GEOSGeometry *polygon_ptr = nullptr;
 
@@ -309,10 +231,9 @@ struct RT_Polygon {
 				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, bounds.min_col, bounds.min_row);
 
 				// Write to WKB and set the result value.
-				polygon_ptr = CreatePolygon(geos_ctx, points);
+				polygon_ptr = GEOSLocalState::CreatePolygon(geos_ctx, points);
 				std::unique_ptr<GEOSGeometry, decltype(geometry_free)> polygon(polygon_ptr, geometry_free);
-				Value geometry_val = make_value(polygon.get());
-				return geometry_val;
+				return GEOSLocalState::GeometryToValue(geos_ctx, polygon.get());
 			}
 
 			// Mixed valid and no-data cells, create polygon for each valid cell and union them together.
@@ -322,7 +243,7 @@ struct RT_Polygon {
 				points[1] = RasterUtils::RasterCoordToWorldCoord(gt, coord.col, coord.row + 1);
 				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, coord.col + 1, coord.row + 1);
 				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, coord.col + 1, coord.row);
-				return CreatePolygon(geos_ctx, points);
+				return GEOSLocalState::CreatePolygon(geos_ctx, points);
 			};
 			auto join_polygons = [&](GEOSGeometry *poly1, GEOSGeometry *poly2) {
 				if (!poly1) {
@@ -351,8 +272,7 @@ struct RT_Polygon {
 
 			// Return the result value.
 			std::unique_ptr<GEOSGeometry, decltype(geometry_free)> polygon(polygon_ptr, geometry_free);
-			Value geometry_val = make_value(polygon.get());
-			return geometry_val;
+			return GEOSLocalState::GeometryToValue(geos_ctx, polygon.get());
 		}
 
 	private:
@@ -371,7 +291,7 @@ struct RT_Polygon {
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 
 		GEOSLocalState &glocal_state = ExecuteFunctionState::GetFunctionState(state)->Cast<GEOSLocalState>();
-		GEOSContextHandle_t &geos_ctx = glocal_state.ctx;
+		GEOSContextHandle_t geos_ctx = glocal_state.ctx;
 		CoordinatesCollector collector(geos_ctx);
 
 		RasterTransformMatrix matrix;
@@ -497,7 +417,6 @@ struct RT_SpatialOp {
 	static void Execute(const SpatialOp &op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
-		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
@@ -520,31 +439,29 @@ struct RT_SpatialOp {
 				GEOSPreparedGeom_destroy_r(geos_ctx, g);
 			}
 		};
-		auto wkb_reader_free = [geos_ctx](GEOSWKBReader *r) {
-			if (r) {
-				GEOSWKBReader_destroy_r(geos_ctx, r);
-			}
-		};
+		auto extract_geometry =
+		    [&geos_ctx](Value arg_value, std::unique_ptr<GEOSGeometry, decltype(geometry_free)> &raw_geom,
+		                std::unique_ptr<const GEOSPreparedGeometry, decltype(prep_geom_free)> &prep_geom,
+		                GeometryExtent &extent_geom) {
+			    raw_geom.reset(GEOSLocalState::CreateGeometry(geos_ctx, arg_value));
+			    if (!raw_geom) {
+				    throw InvalidInputException("Failed to create geometry from input value");
+			    }
+			    prep_geom.reset(GEOSPrepare_r(geos_ctx, raw_geom.get()));
+			    if (!prep_geom) {
+				    throw InvalidInputException("Failed to prepare input geometry");
+			    }
+			    extent_geom = GEOSLocalState::GetGeometryExtent(geos_ctx, raw_geom.get());
+		    };
 
-		std::shared_ptr<GEOSWKBReader> wkb_reader(GEOSWKBReader_create_r(geos_ctx), wkb_reader_free);
 		std::unique_ptr<GEOSGeometry, decltype(geometry_free)> raw_geom(nullptr, geometry_free);
 		std::unique_ptr<const GEOSPreparedGeometry, decltype(prep_geom_free)> prep_geom(nullptr, prep_geom_free);
+		GeometryExtent extent_geom;
 		bool geometry_is_constant = false;
 		Point2D points[4];
 
-		auto extract_geometry = [&](Value arg_value, std::unique_ptr<GEOSGeometry, decltype(geometry_free)> &raw_geom,
-		                            std::unique_ptr<const GEOSPreparedGeometry, decltype(prep_geom_free)> &prep_geom) {
-			const string &wkb_str = StringValue::Get(arg_value);
-			const_data_ptr_t data_ptr = const_data_ptr_t(wkb_str.data());
-			raw_geom.reset(GEOSWKBReader_read_r(geos_ctx, wkb_reader.get(), data_ptr, wkb_str.size()));
-			if (!raw_geom) {
-				throw InvalidInputException("Failed to parse input geometry WKB");
-			}
-			prep_geom.reset(GEOSPrepare_r(geos_ctx, raw_geom.get()));
-		};
-
 		if (count > 0 && args.data[4].GetVectorType() == VectorType::CONSTANT_VECTOR) {
-			extract_geometry(args.data[4].GetValue(0), raw_geom, prep_geom);
+			extract_geometry(args.data[4].GetValue(0), raw_geom, prep_geom, extent_geom);
 			geometry_is_constant = true;
 		}
 
@@ -580,7 +497,7 @@ struct RT_SpatialOp {
 
 			// Parse input geometry?
 			if (!geometry_is_constant) {
-				extract_geometry(args.data[4].GetValue(i), raw_geom, prep_geom);
+				extract_geometry(args.data[4].GetValue(i), raw_geom, prep_geom, extent_geom);
 			}
 			if (!prep_geom) {
 				throw InvalidInputException("Failed to prepare geometry for row %lu", i);
@@ -591,27 +508,28 @@ struct RT_SpatialOp {
 			const DataHeader header = arg_cube.GetHeader();
 			double burn_value = args.data[5].GetValue(i).GetValue<double>();
 
-			auto coord_to_polygon = [&](const RasterCoord &coord) {
+			auto coord_intersects_geometry = [&](const RasterCoord &coord) {
 				int32_t tx = tile_x * blocksize_x + coord.col;
 				int32_t ty = tile_y * blocksize_y + coord.row;
 				points[0] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty);
 				points[1] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty + 1);
 				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty + 1);
 				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty);
-				return CreatePolygon(geos_ctx, points);
+
+				if (!GEOSLocalState::Intersects(extent_geom, points)) {
+					return false;
+				}
+				return GEOSLocalState::Intersects(geos_ctx, prep_geom.get(), points);
 			};
 
 			auto evaluate_geometry = [&](const CubeCellValue &v, double &result) {
 				RasterCoord coord = v.GetCoord(header);
 
-				GEOSGeometry *polygon_ptr = coord_to_polygon(coord);
-				std::unique_ptr<GEOSGeometry, decltype(geometry_free)> polygon(polygon_ptr, geometry_free);
-
-				int inside = GEOSPreparedIntersects_r(geos_ctx, prep_geom.get(), polygon_ptr);
+				bool intersects = coord_intersects_geometry(coord);
 				if (op == SpatialOp::CLIP) {
-					result = (inside == 1) ? v.value : burn_value;
+					result = intersects ? v.value : burn_value;
 				} else {
-					result = (inside == 1) ? burn_value : v.value;
+					result = intersects ? burn_value : v.value;
 				}
 				return true;
 			};
