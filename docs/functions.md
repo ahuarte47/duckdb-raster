@@ -1057,17 +1057,32 @@ Calculates statistics for a specific band (0-based index) in a set of datacubes.
 
 The returned value is a `STRUCT` with same fields as the [`RT_CubeStats`](#rt_cubestats) function, but computed across all datacubes in the group instead of a single datacube.
 
-The function accepts the following parameters:
+Function accepts two different forms with the following parameters.
+
+Just to compute statistics for a specific band of a datacube:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
 | `databand` | DATACUBE | The datacube column to compute statistics for. |
 | `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 
+To compute statistics for a specific band of a datacube, but only for those valid (non-nodata)
+cells that fall within a geometry (Zonal statistics):
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `databand` | DATACUBE | The datacube column to compute statistics for. |
+| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+| `tile_x` | INTEGER | The tile x coordinate of the tile. |
+| `tile_y` | INTEGER | The tile y coordinate of the tile. |
+| `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size. |
+| `geometry` | GEOMETRY | The geometry to use for spatial filtering. |
+
 #### Signature
 
 ```sql
 RT_CubeStats_Agg (datacube DATACUBE, band INTEGER)
+RT_CubeStats_Agg (datacube DATACUBE, band INTEGER, tile_x INTEGER, tile_y INTEGER, metadata JSON, geometry GEOMETRY)
 ```
 
 #### Examples
@@ -1092,6 +1107,17 @@ FROM (
     SELECT RT_CubeStats_Agg(databand_1, 0) AS stats
     FROM RT_Read('path/to/raster/file.tif')
 );
+```
+
+To calculate zonal statistics of values falling within a geometry, you can use the following example:
+
+```sql
+LOAD spatial;
+SELECT
+    RT_CubeStats_Agg(databand_1, 0, tile_x, tile_y, metadata, ST_MakeEnvelope(...)) AS stats
+FROM
+    RT_Read('path/to/raster/file.tif')
+;
 ```
 
 ----

@@ -35,3 +35,29 @@ FROM
 ;
 ----
 0.0	15.0	1.18536257062812	2.3879033627367794	63891	0
+
+query IIIIII
+WITH __clip_layer AS (
+    SELECT geom FROM ST_Read('./test/data/CATAST_Pol_Township-PNA.geojson')
+),
+__stats AS (
+    SELECT
+        RT_CubeStats_Agg(databand_1, 0, tile_x, tile_y, metadata, geom) AS stats
+    FROM
+        __clip_layer,
+        RT_Read('./test/data/mosaic/SCL.tif-land.vrt', blocksize_x := 128, blocksize_y := 128)
+    WHERE
+        ST_Intersects(__clip_layer.geom, geometry)
+)
+SELECT
+    stats.minimum,
+    stats.maximum,
+    stats.mean,
+    stats.stddev,
+    stats.valid_count,
+    stats.nodata_count
+FROM
+    __stats
+;
+----
+0.0	15.0	1.18536257062812	2.3879033627367794	63891	0

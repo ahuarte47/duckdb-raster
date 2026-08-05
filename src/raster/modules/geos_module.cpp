@@ -1,4 +1,4 @@
-#include "geos_state.hpp"
+#include "geos_module.hpp"
 
 namespace duckdb {
 
@@ -73,6 +73,28 @@ GEOSGeometry *GEOSLocalState::CreateGeometry(const Value &value) {
 	return CreateGeometry(ctx, value);
 }
 
+GEOSGeometry *GEOSLocalState::CreateGeometry(GEOSContextHandle_t geos_ctx, const string_t &wkb) {
+	auto wkb_reader_free = [geos_ctx](GEOSWKBReader *r) {
+		if (r) {
+			GEOSWKBReader_destroy_r(geos_ctx, r);
+		}
+	};
+
+	std::shared_ptr<GEOSWKBReader> wkb_reader(GEOSWKBReader_create_r(geos_ctx), wkb_reader_free);
+	const_data_ptr_t data_ptr = const_data_ptr_cast(wkb.GetData());
+
+	GEOSGeometry *geometry = GEOSWKBReader_read_r(geos_ctx, wkb_reader.get(), data_ptr, wkb.GetSize());
+	if (!geometry) {
+		throw std::runtime_error("Failed to create GEOS geometry from WKB");
+	}
+
+	return geometry;
+}
+
+GEOSGeometry *GEOSLocalState::CreateGeometry(const string_t &wkb) {
+	return CreateGeometry(ctx, wkb);
+}
+
 Value GEOSLocalState::GeometryToValue(const GEOSContextHandle_t geos_ctx, GEOSGeometry *geometry) {
 	auto wkb_writer_free = [geos_ctx](GEOSWKBWriter *w) {
 		if (w) {
@@ -115,11 +137,7 @@ GeometryExtent GEOSLocalState::GetGeometryExtent(GEOSContextHandle_t geos_ctx, G
 		throw std::runtime_error("Failed to get geometry extent");
 	}
 
-	GeometryExtent extent;
-	extent.x_min = x_min;
-	extent.y_min = y_min;
-	extent.x_max = x_max;
-	extent.y_max = y_max;
+	GeometryExtent extent = {x_min, y_min, 0.0, 0.0, x_max, y_max, 0.0, 0.0};
 	return extent;
 }
 
@@ -127,32 +145,45 @@ GeometryExtent GEOSLocalState::GetGeometryExtent(GEOSGeometry *geometry) {
 	return GetGeometryExtent(ctx, geometry);
 }
 
-bool GEOSLocalState::Intersects(const GeometryExtent &geom_extent, const Point2D points[4]) {
-	GeometryExtent bbox;
-	bbox.x_min = std::min({points[0].x, points[1].x, points[2].x, points[3].x});
-	bbox.y_min = std::min({points[0].y, points[1].y, points[2].y, points[3].y});
-	bbox.x_max = std::max({points[0].x, points[1].x, points[2].x, points[3].x});
-	bbox.y_max = std::max({points[0].y, points[1].y, points[2].y, points[3].y});
-	return geom_extent.IntersectsXY(bbox);
+GEOSIntersectsGeometry::GEOSIntersectsGeometry(GEOSContextHandle_t geos_ctx, GEOSGeometry *geometry)
+    : geos_ctx(geos_ctx), geometry(geometry), prep_geometry(GEOSPrepare_r(geos_ctx, geometry)),
+      geom_extent(GEOSLocalState::GetGeometryExtent(geos_ctx, geometry)) {
 }
 
-bool GEOSLocalState::Intersects(GEOSContextHandle_t geos_ctx, const GEOSPreparedGeometry *geometry,
-                                const Point2D points[4]) {
-	auto geometry_free = [geos_ctx](GEOSGeometry *g) {
-		if (g) {
-			GEOSGeom_destroy_r(geos_ctx, g);
-		}
-	};
-
-	GEOSGeometry *polygon_ptr = CreatePolygon(geos_ctx, points);
-	std::unique_ptr<GEOSGeometry, decltype(geometry_free)> polygon(polygon_ptr, geometry_free);
-
-	int inside = GEOSPreparedIntersects_r(geos_ctx, geometry, polygon_ptr);
-	return inside == 1;
+GEOSIntersectsGeometry::~GEOSIntersectsGeometry() {
+	if (prep_geometry) {
+		GEOSPreparedGeom_destroy_r(geos_ctx, prep_geometry);
+	}
+	if (geometry) {
+		GEOSGeom_destroy_r(geos_ctx, geometry);
+	}
 }
 
-bool GEOSLocalState::Intersects(const GEOSPreparedGeometry *geometry, const Point2D points[4]) {
-	return Intersects(ctx, geometry, points);
+bool GEOSIntersectsGeometry::Intersects(const Point2D points[4]) {
+	double x_min = std::min({points[0].x, points[1].x, points[2].x, points[3].x});
+	double y_min = std::min({points[0].y, points[1].y, points[2].y, points[3].y});
+	double x_max = std::max({points[0].x, points[1].x, points[2].x, points[3].x});
+	double y_max = std::max({points[0].y, points[1].y, points[2].y, points[3].y});
+
+	GeometryExtent bbox = {x_min, y_min, 0, 0, x_max, y_max, 0, 0};
+	if (!geom_extent.IntersectsXY(bbox)) {
+		return false;
+	}
+
+	GEOSGeometry *polygon_ptr = GEOSLocalState::CreatePolygon(geos_ctx, points);
+	if (!polygon_ptr) {
+		throw std::runtime_error("Failed to create GEOS polygon from corner points");
+	}
+
+	if (prep_geometry) {
+		int inside = GEOSPreparedIntersects_r(geos_ctx, prep_geometry, polygon_ptr);
+		GEOSGeom_destroy_r(geos_ctx, polygon_ptr);
+		return inside == 1;
+	} else {
+		int inside = GEOSIntersects_r(geos_ctx, geometry, polygon_ptr);
+		GEOSGeom_destroy_r(geos_ctx, polygon_ptr);
+		return inside == 1;
+	}
 }
 
 } // namespace duckdb

@@ -13,7 +13,7 @@
 
 // GEOS
 #include "geos_c.h"
-#include "modules/geos_state.hpp"
+#include "modules/geos_module.hpp"
 
 namespace duckdb {
 
@@ -417,6 +417,7 @@ struct RT_SpatialOp {
 	static void Execute(const SpatialOp &op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 6);
 		const idx_t count = args.size();
+		args.Flatten();
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
@@ -424,46 +425,9 @@ struct RT_SpatialOp {
 		RasterTransformMatrix matrix;
 		std::string matrix_str;
 
-		// Functions to hold the spatial coordinates of cells for the current row.
-
 		GEOSLocalState &glocal_state = ExecuteFunctionState::GetFunctionState(state)->Cast<GEOSLocalState>();
 		GEOSContextHandle_t geos_ctx = glocal_state.ctx;
-
-		auto geometry_free = [geos_ctx](GEOSGeometry *g) {
-			if (g) {
-				GEOSGeom_destroy_r(geos_ctx, g);
-			}
-		};
-		auto prep_geom_free = [geos_ctx](const GEOSPreparedGeometry *g) {
-			if (g) {
-				GEOSPreparedGeom_destroy_r(geos_ctx, g);
-			}
-		};
-		auto extract_geometry =
-		    [&geos_ctx](Value arg_value, std::unique_ptr<GEOSGeometry, decltype(geometry_free)> &raw_geom,
-		                std::unique_ptr<const GEOSPreparedGeometry, decltype(prep_geom_free)> &prep_geom,
-		                GeometryExtent &extent_geom) {
-			    raw_geom.reset(GEOSLocalState::CreateGeometry(geos_ctx, arg_value));
-			    if (!raw_geom) {
-				    throw InvalidInputException("Failed to create geometry from input value");
-			    }
-			    prep_geom.reset(GEOSPrepare_r(geos_ctx, raw_geom.get()));
-			    if (!prep_geom) {
-				    throw InvalidInputException("Failed to prepare input geometry");
-			    }
-			    extent_geom = GEOSLocalState::GetGeometryExtent(geos_ctx, raw_geom.get());
-		    };
-
-		std::unique_ptr<GEOSGeometry, decltype(geometry_free)> raw_geom(nullptr, geometry_free);
-		std::unique_ptr<const GEOSPreparedGeometry, decltype(prep_geom_free)> prep_geom(nullptr, prep_geom_free);
-		GeometryExtent extent_geom;
-		bool geometry_is_constant = false;
 		Point2D points[4];
-
-		if (count > 0 && args.data[4].GetVectorType() == VectorType::CONSTANT_VECTOR) {
-			extract_geometry(args.data[4].GetValue(0), raw_geom, prep_geom, extent_geom);
-			geometry_is_constant = true;
-		}
 
 		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 
@@ -495,20 +459,17 @@ struct RT_SpatialOp {
 			const int32_t &blocksize_x = matrix.blocksize_x;
 			const int32_t &blocksize_y = matrix.blocksize_y;
 
-			// Parse input geometry?
-			if (!geometry_is_constant) {
-				extract_geometry(args.data[4].GetValue(i), raw_geom, prep_geom, extent_geom);
-			}
-			if (!prep_geom) {
-				throw InvalidInputException("Failed to prepare geometry for row %lu", i);
-			}
-
 			// Evaluate the spatial operation on the data cube.
 
 			const DataHeader header = arg_cube.GetHeader();
 			double burn_value = args.data[5].GetValue(i).GetValue<double>();
 
-			auto coord_intersects_geometry = [&](const RasterCoord &coord) {
+			GEOSGeometry *raw_geom = GEOSLocalState::CreateGeometry(geos_ctx, args.data[4].GetValue(i));
+			GEOSIntersectsGeometry wrap_geom(geos_ctx, raw_geom);
+
+			auto evaluate_geometry = [&](const CubeCellValue &v, double &result) {
+				RasterCoord coord = v.GetCoord(header);
+
 				int32_t tx = tile_x * blocksize_x + coord.col;
 				int32_t ty = tile_y * blocksize_y + coord.row;
 				points[0] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty);
@@ -516,16 +477,7 @@ struct RT_SpatialOp {
 				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty + 1);
 				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty);
 
-				if (!GEOSLocalState::Intersects(extent_geom, points)) {
-					return false;
-				}
-				return GEOSLocalState::Intersects(geos_ctx, prep_geom.get(), points);
-			};
-
-			auto evaluate_geometry = [&](const CubeCellValue &v, double &result) {
-				RasterCoord coord = v.GetCoord(header);
-
-				bool intersects = coord_intersects_geometry(coord);
+				bool intersects = wrap_geom.Intersects(points);
 				if (op == SpatialOp::CLIP) {
 					result = intersects ? v.value : burn_value;
 				} else {
@@ -534,13 +486,6 @@ struct RT_SpatialOp {
 				return true;
 			};
 			arg_cube.Apply(evaluate_geometry, arg_cube, res_cube);
-
-			// Free per-row geometry (not the shared constant one).
-
-			if (!geometry_is_constant) {
-				prep_geom.reset();
-				raw_geom.reset();
-			}
 
 			// Set the result.
 
