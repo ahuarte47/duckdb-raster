@@ -7,6 +7,11 @@
         "snappy",
         "lz4",
         {
+            "name": "sqlite3",
+            "default-features": false,
+            "features": ["rtree"]
+        },
+        {
             "name": "proj",
             "default-features": false,
             "features": [

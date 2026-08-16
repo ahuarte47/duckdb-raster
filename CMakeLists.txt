@@ -23,9 +23,11 @@ find_package(PROJ CONFIG REQUIRED)
 find_package(GDAL CONFIG REQUIRED)
 find_package(Snappy CONFIG REQUIRED)
 find_package(lz4 CONFIG REQUIRED)
+find_package(unofficial-sqlite3 CONFIG REQUIRED)
 
 # Important: The link order matters, its the reverse order of dependency
-set(EXTENSION_DEPENDENCIES GDAL::GDAL PROJ::proj ZLIB::ZLIB Snappy::snappy lz4::lz4)
+set(EXTENSION_DEPENDENCIES GDAL::GDAL PROJ::proj ZLIB::ZLIB Snappy::snappy lz4::lz4
+                           unofficial::sqlite3::sqlite3 ZLIB::ZLIB)
 
 if(SPATIAL_USE_NETWORK)
   message(STATUS "Building with network functionality")

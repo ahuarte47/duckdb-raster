@@ -8,6 +8,7 @@
 
 // GDAL/Raster
 #include "raster/modules/gdal_module.hpp"
+#include "raster/modules/proj_module.hpp"
 #include "raster/raster_casts.hpp"
 #include "raster/raster_types.hpp"
 #include "raster/table/raster_drivers_function.hpp"
@@ -23,6 +24,8 @@
 namespace duckdb {
 
 static void LoadInternal(ExtensionLoader &loader) {
+	// Register the VFS for the proj.db database
+	ProjModule::Register(loader);
 	// Register the GDAL module for RASTER
 	GdalModule::Register(loader);
 	// Register RASTER types and functions
