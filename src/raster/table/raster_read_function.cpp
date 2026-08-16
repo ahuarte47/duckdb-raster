@@ -60,9 +60,10 @@ static std::vector<char const *> NamedParametersAsVector(const named_parameter_m
 
 	auto input_param = input.find(keyname);
 	if (input_param != input.end()) {
-		output.reserve(input.size() + 1);
+		const duckdb::vector<duckdb::Value> params = ListValue::GetChildren(input_param->second);
+		output.reserve(params.size() + 1);
 
-		for (auto &param : ListValue::GetChildren(input_param->second)) {
+		for (auto &param : params) {
 			output.push_back(StringValue::Get(param).c_str());
 		}
 		output.push_back(nullptr);
@@ -77,9 +78,10 @@ static std::vector<char const *> FilesetParametersAsVector(const named_parameter
 
 	auto input_param = input.find(keyname);
 	if (input_param != input.end()) {
-		output.reserve(input.size() + 1);
+		const duckdb::vector<duckdb::Value> params = ListValue::GetChildren(input_param->second);
+		output.reserve(params.size() + 1);
 
-		for (auto &param : ListValue::GetChildren(input_param->second)) {
+		for (auto &param : params) {
 			const auto file_path = StringValue::Get(param);
 			output.push_back(GdalFilePath(file_path, context).c_str());
 		}
@@ -89,7 +91,7 @@ static std::vector<char const *> FilesetParametersAsVector(const named_parameter
 }
 
 //! Open a GDAL dataset from a list of file names and named parameters.
-static GDALDataset *OpenDataset(ClientContext &context, std::vector<std::string> &file_names,
+static GDALDataset *OpenDataset(ClientContext &context, const std::vector<std::string> &file_names,
                                 const named_parameter_map_t &params) {
 	GDALDataset *dataset = nullptr;
 
@@ -155,6 +157,106 @@ static GDALDataset *OpenDataset(ClientContext &context, std::vector<std::string>
 	return dataset;
 }
 
+//! Warp a GDAL dataset from a list of file names and named parameters.
+static GDALDataset *WarpDataset(ClientContext &context, const std::vector<std::string> &file_names,
+                                const named_parameter_map_t &params,
+                                std::vector<GDALDatasetUniquePtr> &child_datasets) {
+	GDALDataset *result = nullptr;
+
+	if (file_names.size() == 1) {
+		GDALDatasetUniquePtr dataset = GDALDatasetUniquePtr(OpenDataset(context, file_names, params));
+
+		auto input_param = params.find("warp_options");
+		if (input_param == params.end() || input_param->second.type().id() != LogicalTypeId::LIST) {
+			return dataset.release();
+		}
+
+		const auto options = ListValue::GetChildren(input_param->second);
+		if (options.empty()) {
+			return dataset.release();
+		}
+
+		// Load warp options from the named parameters,
+		// use a named /vsimem GeoTIFF output so downstream VRT sources are stable and reopenable.
+
+		char **papszArgv = nullptr;
+		papszArgv = CSLAddString(papszArgv, "-of");
+		papszArgv = CSLAddString(papszArgv, "GTiff");
+
+		for (auto it = options.begin(); it != options.end(); ++it) {
+			const auto option_str = StringValue::Get(*it);
+			papszArgv = CSLAddString(papszArgv, option_str.c_str());
+		}
+
+		// Warp the dataset using GDAL's in-memory filesystem.
+
+		GDALWarpAppOptions *psOptions = GDALWarpAppOptionsNew(papszArgv, nullptr);
+		CSLDestroy(papszArgv);
+		CPLErrorReset();
+
+		const std::string ds_name = "/vsimem/" + UUID::ToString(UUID::GenerateRandomUUID()) + ".tif";
+		GDALDatasetH ds_handle = GDALDataset::ToHandle(dataset.get());
+		result = GDALDataset::FromHandle(GDALWarp(ds_name.c_str(), nullptr, 1, &ds_handle, psOptions, nullptr));
+		GDALWarpAppOptionsFree(psOptions);
+
+		if (result) {
+			result->FlushCache();
+		} else {
+			const std::string error = RasterUtils::GetLastGdalErrorMsg();
+			throw IOException("Failed to warp dataset (" + error + ")");
+		}
+	} else {
+		bool separate_bands = false;
+
+		if (params.find("separate_bands") != params.end()) {
+			separate_bands = params.at("separate_bands").GetValue<bool>();
+		}
+
+		std::vector<GDALDatasetUniquePtr> temp_datasets;
+
+		for (const auto &file_name : file_names) {
+			GDALDatasetUniquePtr child(WarpDataset(context, {file_name}, params, child_datasets));
+			temp_datasets.push_back(std::move(child));
+		}
+
+		// Build a VRT mosaic from the input files using GDAL's in-memory filesystem.
+
+		std::string vrt_path = "/vsimem/" + UUID::ToString(UUID::GenerateRandomUUID()) + ".vrt";
+		std::vector<std::string> vrt_args = {"-r", "nearest"};
+
+		if (separate_bands) {
+			vrt_args.push_back("-separate");
+		}
+
+		std::vector<const char *> vrt_argv;
+		for (const auto &s : vrt_args) {
+			vrt_argv.push_back(s.c_str());
+		}
+		vrt_argv.push_back(nullptr);
+
+		using GDALBuildVRTOptionsPtr = std::unique_ptr<GDALBuildVRTOptions, decltype(&GDALBuildVRTOptionsFree)>;
+
+		GDALBuildVRTOptionsPtr vrt_opts(GDALBuildVRTOptionsNew(const_cast<char **>(vrt_argv.data()), nullptr),
+		                                GDALBuildVRTOptionsFree);
+
+		std::vector<GDALDatasetH> ds_handles;
+		for (auto &ds : temp_datasets) {
+			ds_handles.push_back(GDALDataset::ToHandle(ds.get()));
+			child_datasets.push_back(std::move(ds));
+		}
+
+		result = GDALDataset::FromHandle(GDALBuildVRT(vrt_path.c_str(), static_cast<int>(ds_handles.size()),
+		                                              ds_handles.data(), nullptr, vrt_opts.get(), nullptr));
+
+		if (!result) {
+			const std::string error = RasterUtils::GetLastGdalErrorMsg();
+			throw IOException("Failed to build VRT mosaic from input files (" + error + ")");
+		}
+		RASTER_SCAN_DEBUG_LOG(1, "GDAL dataset opened: '%s'", "<multiple files>");
+	}
+	return result;
+}
+
 //======================================================================================================================
 // RT_Read
 //======================================================================================================================
@@ -172,6 +274,7 @@ struct RT_Read {
 		bool make_datacube = false;
 
 		GDALDatasetUniquePtr dataset;
+		std::vector<GDALDatasetUniquePtr> child_datasets;
 		std::string metadata_ds;
 		std::string crs;
 		double geo_transform[6] = {0};
@@ -267,7 +370,14 @@ struct RT_Read {
 
 		// Open the dataset.
 
-		GDALDatasetUniquePtr dataset = GDALDatasetUniquePtr(OpenDataset(context, file_names, params));
+		GDALDatasetUniquePtr dataset;
+		std::vector<GDALDatasetUniquePtr> child_datasets;
+
+		if (params.find("warp_options") != params.end()) {
+			dataset = GDALDatasetUniquePtr(WarpDataset(context, file_names, params, child_datasets));
+		} else {
+			dataset = GDALDatasetUniquePtr(OpenDataset(context, file_names, params));
+		}
 
 		// Fetch the dataset metadata.
 
@@ -469,6 +579,7 @@ struct RT_Read {
 		result->skip_empty_tiles = skip_empty_tiles;
 		result->make_datacube = make_datacube;
 		result->dataset = std::move(dataset);
+		result->child_datasets = std::move(child_datasets);
 		result->metadata_ds = metadata_ds.str();
 		result->crs = std::move(crs);
 		std::copy(std::begin(gt), std::end(gt), std::begin(result->geo_transform));
@@ -921,9 +1032,10 @@ struct RT_Read {
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
 		| `path` | VARCHAR | The path to the file to read. The only mandatory parameter. |
-		| `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
-		| `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
-		| `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. Only for single-file version of the function. |
+		| `open_options` | VARCHAR[] | An optional list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
+		| `allowed_drivers` | VARCHAR[] | An optional list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
+		| `sibling_files` | VARCHAR[] | An optional list of sibling files that are required to open the file. Only for single-file version of the function. |
+		| `warp_options` | VARCHAR[] | An optional list of warp options passed to reproject or warp the raster. It accepts the same options as the GDAL `Warp` tool (https://gdal.org/en/stable/programs/gdalwarp.html). |
 		| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
 		| `data_format` | VARCHAR | Compression format used when packing the pixel data into the BLOB. See the data format table in the BLOB structure section below. `RAW` (uncompressed) is the default. |
 		| `blocksize_x` | INTEGER | The block size of the tile in the x direction. You can use this parameter to override the original block size of the raster. |
@@ -990,6 +1102,9 @@ struct RT_Read {
 		for (auto *func : {&func_01, &func_02}) {
 			func->cardinality = Cardinality;
 			func->table_scan_progress = Progress;
+
+			// Common warp optional parameters
+			func->named_parameters["warp_options"] = LogicalType::LIST(LogicalType::VARCHAR);
 
 			// Common optional parameters
 			func->named_parameters["data_format"] = LogicalType::VARCHAR;
@@ -1085,7 +1200,14 @@ struct RT_ReadCells {
 
 		// Open the dataset.
 
-		GDALDatasetUniquePtr dataset = GDALDatasetUniquePtr(OpenDataset(context, file_names, params));
+		GDALDatasetUniquePtr dataset;
+		std::vector<GDALDatasetUniquePtr> child_datasets;
+
+		if (params.find("warp_options") != params.end()) {
+			dataset = GDALDatasetUniquePtr(WarpDataset(context, file_names, params, child_datasets));
+		} else {
+			dataset = GDALDatasetUniquePtr(OpenDataset(context, file_names, params));
+		}
 
 		// Fetch the dataset metadata.
 
@@ -1196,6 +1318,7 @@ struct RT_ReadCells {
 		result->skip_empty_tiles = true;
 		result->make_datacube = false;
 		result->dataset = std::move(dataset);
+		result->child_datasets = std::move(child_datasets);
 		result->metadata_ds = "{}";
 		result->crs = std::move(crs);
 		std::copy(std::begin(gt), std::end(gt), std::begin(result->geo_transform));
@@ -1548,9 +1671,10 @@ struct RT_ReadCells {
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
 		| `path` | VARCHAR | The path to the file to read. The only mandatory parameter. |
-		| `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
-		| `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
-		| `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. Only for single-file version of the function. |
+		| `open_options` | VARCHAR[] | An optional list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
+		| `allowed_drivers` | VARCHAR[] | An optional list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
+		| `sibling_files` | VARCHAR[] | An optional list of sibling files that are required to open the file. Only for single-file version of the function. |
+		| `warp_options` | VARCHAR[] | An optional list of warp options passed to reproject or warp the raster. It accepts the same options as the GDAL `Warp` tool (https://gdal.org/en/stable/programs/gdalwarp.html). |
 		| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
 
 		This is the list of columns returned by `RT_ReadCells`:
@@ -1596,6 +1720,9 @@ struct RT_ReadCells {
 		for (auto *func : {&func_01, &func_02}) {
 			func->cardinality = RT_Read::Cardinality;
 			func->table_scan_progress = RT_Read::Progress;
+
+			// Common warp optional parameters
+			func->named_parameters["warp_options"] = LogicalType::LIST(LogicalType::VARCHAR);
 
 			// Enable projection pushdown - allows DuckDB to tell us which columns are needed
 			// The column_ids will be passed to InitGlobal via TableFunctionInitInput

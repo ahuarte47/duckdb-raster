@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+1.3.0
+++++++++++++++++++
+
+- New option `warp_options` in the `RT_Read` and `RT_ReadCells` functions to reproject or warp the raster using GDAL Warp options (https://gdal.org/en/stable/programs/gdalwarp.html).
+
 1.2.0
 ++++++++++++++++++
 
