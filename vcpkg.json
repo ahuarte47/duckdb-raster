@@ -24,6 +24,13 @@
             "features": [
                 "curl","geos","hdf5","jpeg","lzma","openjpeg","openssl","png","zstd"
             ]
+        },
+        {
+            "name": "tiff",
+            "default-features": false,
+            "features": [
+                "jpeg","lerc","libdeflate","lzma","webp","zip","zstd"
+            ]
         }
     ],
     "vcpkg-configuration": {
