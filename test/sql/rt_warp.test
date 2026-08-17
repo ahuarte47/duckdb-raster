@@ -1,0 +1,79 @@
+# name: test/sql/rt_warp.test
+# description: test raster extension
+# group: [sql]
+
+require raster
+
+query IIII
+SELECT
+    min(x) AS xmin,
+    min(y) AS ymin,
+    max(x) AS xmax,
+    max(y) AS ymax
+FROM
+    RT_ReadCells('./test/data/overlay-sample.tiff', warp_options := [])
+;
+----
+545539.75	4724420.25	545699.75	4724510.25
+
+query IIII
+SELECT
+    min(x) AS xmin,
+    min(y) AS ymin,
+    max(x) AS xmax,
+    max(y) AS ymax
+FROM
+    RT_ReadCells(
+        './test/data/overlay-sample.tiff',
+        warp_options := [
+            '-t_srs', 'EPSG:4326',
+            '-r', 'nearest'
+        ]
+    )
+;
+----
+-2.4442419478677504	42.67089738343109	-2.4422870256472935	42.671713850946695
+
+query IIII
+SELECT
+    min(x) AS xmin,
+    min(y) AS ymin,
+    max(x) AS xmax,
+    max(y) AS ymax
+FROM
+    RT_ReadCells([
+        './test/data/mosaic/SCL.tif-land-clip00.tiff',
+        './test/data/mosaic/SCL.tif-land-clip01.tiff',
+        './test/data/mosaic/SCL.tif-land-clip01.tiff',
+        './test/data/mosaic/SCL.tif-land-clip11.tiff'
+        ],
+        warp_options := [
+            '-t_srs', 'EPSG:4326',
+            '-r', 'nearest'
+        ]
+    )
+;
+----
+-2.5052248471291128	41.89711702170432	-0.7120359516615274	43.32137535665406
+
+query IIII
+SELECT
+    min(x) AS xmin,
+    min(y) AS ymin,
+    max(x) AS xmax,
+    max(y) AS ymax
+FROM
+    RT_ReadCells([
+        './test/data/warp/SCL.tif-land-clip00_epsg3035.tiff',
+        './test/data/warp/SCL.tif-land-clip01_epsg32630.tiff',
+        './test/data/warp/SCL.tif-land-clip01_epsg32630.tiff',
+        './test/data/warp/SCL.tif-land-clip11_epsg3035.tiff'
+        ],
+        warp_options := [
+            '-t_srs', 'EPSG:4326',
+            '-r', 'nearest'
+        ]
+    )
+;
+----
+-2.701924255027266	41.783502564636386	-0.6512457400641802	43.41959342867749

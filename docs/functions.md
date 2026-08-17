@@ -93,9 +93,10 @@ The `RT_Read` function accepts parameters, most of them optional:
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
 | `path` | VARCHAR | The path to the file to read. The only mandatory parameter. |
-| `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
-| `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
-| `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. Only for single-file version of the function. |
+| `open_options` | VARCHAR[] | An optional list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
+| `allowed_drivers` | VARCHAR[] | An optional list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
+| `sibling_files` | VARCHAR[] | An optional list of sibling files that are required to open the file. Only for single-file version of the function. |
+| `warp_options` | VARCHAR[] | An optional list of warp options passed to reproject or warp the raster. It accepts the same options as the GDAL `Warp` tool (https://gdal.org/en/stable/programs/gdalwarp.html). |
 | `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
 | `data_format` | VARCHAR | Compression format used when packing the pixel data into the BLOB. See the data format table in the BLOB structure section below. `RAW` (uncompressed) is the default. |
 | `blocksize_x` | INTEGER | The block size of the tile in the x direction. You can use this parameter to override the original block size of the raster. |
@@ -163,6 +164,7 @@ RT_Read (file_path [VARCHAR, VARCHAR[]],
          open_options VARCHAR[] DEFAULT NULL,
          allowed_drivers VARCHAR[] DEFAULT NULL,
          sibling_files VARCHAR[] DEFAULT NULL,
+         warp_options VARCHAR[] DEFAULT NULL,
          separate_bands BOOLEAN DEFAULT false,
          data_format VARCHAR DEFAULT 'RAW',
          blocksize_x INTEGER DEFAULT NULL,
@@ -187,6 +189,21 @@ FROM
         'path/to/mosaic/raster-clip11.tif'
     ])
 ;
+
+SELECT
+    geometry, databand_1
+FROM
+    RT_Read([
+        'path/to/mosaic/raster-clip00.tif',
+        'path/to/mosaic/raster-clip01.tif',
+        'path/to/mosaic/raster-clip10.tif',
+        'path/to/mosaic/raster-clip11.tif'
+    ],
+    warp_options := [
+        '-t_srs', 'EPSG:4326',
+        '-r', 'nearest'
+    ])
+;
 ```
 
 ----
@@ -204,9 +221,10 @@ The `RT_ReadCells` function accepts parameters, most of them optional:
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
 | `path` | VARCHAR | The path to the file to read. The only mandatory parameter. |
-| `open_options` | VARCHAR[] | A list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
-| `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
-| `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. Only for single-file version of the function. |
+| `open_options` | VARCHAR[] | An optional list of key-value pairs that are passed to the GDAL driver to control the opening of the file. Refer to the GDAL documentation for available options. Only for single-file version of the function. |
+| `allowed_drivers` | VARCHAR[] | An optional list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. Only for single-file version of the function. |
+| `sibling_files` | VARCHAR[] | An optional list of sibling files that are required to open the file. Only for single-file version of the function. |
+| `warp_options` | VARCHAR[] | An optional list of warp options passed to reproject or warp the raster. It accepts the same options as the GDAL `Warp` tool (https://gdal.org/en/stable/programs/gdalwarp.html). |
 | `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
 
 This is the list of columns returned by `RT_ReadCells`:
@@ -230,6 +248,7 @@ RT_ReadCells (file_path [VARCHAR, VARCHAR[]],
               open_options VARCHAR[] DEFAULT NULL,
               allowed_drivers VARCHAR[] DEFAULT NULL,
               sibling_files VARCHAR[] DEFAULT NULL,
+              warp_options VARCHAR[] DEFAULT NULL,
               separate_bands BOOLEAN DEFAULT false)
 ```
 
@@ -240,6 +259,12 @@ SELECT
     id, x, y, geometry, col, row, band_1, band_2, band_3
 FROM
     RT_ReadCells('path/to/raster/file.tif')
+;
+
+SELECT
+    id, x, y, geometry, col, row, band_1, band_2, band_3
+FROM
+    RT_ReadCells('path/to/raster/file.tif', warp_options := ['-t_srs', 'EPSG:4326', '-r', 'nearest'])
 ;
 ```
 
