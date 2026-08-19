@@ -1,6 +1,12 @@
 Release history
 ---------------
 
+1.4.0
+++++++++++++++++++
+
+- Add `lerc`, `webp` and `zstd` encoding to Gtiff reader.
+- New `ignore_nodata` parameter in the `RT_ReadCells` function. It allows to ignore cells with nodata values when reading raster data.
+
 1.3.0
 ++++++++++++++++++
 

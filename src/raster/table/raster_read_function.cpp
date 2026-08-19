@@ -257,9 +257,61 @@ static GDALDataset *WarpDataset(ClientContext &context, const std::vector<std::s
 	return result;
 }
 
+//! Returns true if the value at the given offset in the data buffer equals the nodata sentinel (NaN-aware).
+inline static bool IsNoDataValue(const MemoryStream &data_buffer, const size_t data_offset,
+                                 const GDALDataType data_type, double no_data) {
+	switch (data_type) {
+	case GDT_Byte: {
+		uint8_t value = *reinterpret_cast<uint8_t *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	case GDT_Int8: {
+		int8_t value = *reinterpret_cast<int8_t *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	case GDT_UInt16: {
+		uint16_t value = *reinterpret_cast<uint16_t *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	case GDT_Int16: {
+		int16_t value = *reinterpret_cast<int16_t *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	case GDT_UInt32: {
+		uint32_t value = *reinterpret_cast<uint32_t *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	case GDT_Int32: {
+		int32_t value = *reinterpret_cast<int32_t *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	case GDT_UInt64: {
+		uint64_t value = *reinterpret_cast<uint64_t *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	case GDT_Int64: {
+		int64_t value = *reinterpret_cast<int64_t *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	case GDT_Float32: {
+		float value = *reinterpret_cast<float *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	case GDT_Float64: {
+		double value = *reinterpret_cast<double *>(data_buffer.GetData() + data_offset);
+		return CubeCellValue::IsNoDataValue(static_cast<double>(value), no_data);
+	}
+	default:
+		throw IOException("Unsupported data type: %d", data_type);
+	}
+}
+
 //======================================================================================================================
 // RT_Read
 //======================================================================================================================
+
+//! Type of nodata handling when reading raster cells.
+enum IGNORE_CELLS : int32_t { NEVER = 0, ANY_NODATA_VALUE = 1, ALL_NODATA_VALUES = 2 };
 
 struct RT_Read {
 	//------------------------------------------------------------------------------------------------------------------
@@ -271,6 +323,7 @@ struct RT_Read {
 		named_parameter_map_t parameters;
 		DataFormat::Value data_format = DataFormat::Value::RAW;
 		bool skip_empty_tiles = true;
+		IGNORE_CELLS ignore_cells = IGNORE_CELLS::NEVER;
 		bool make_datacube = false;
 
 		GDALDatasetUniquePtr dataset;
@@ -1198,6 +1251,19 @@ struct RT_ReadCells {
 
 		const auto &params = input.named_parameters;
 
+		IGNORE_CELLS ignore_cells = IGNORE_CELLS::NEVER;
+		if (params.find("ignore_nodata") != params.end()) {
+			int32_t value = params.at("ignore_nodata").GetValue<int32_t>();
+
+			if (value < static_cast<int32_t>(IGNORE_CELLS::NEVER) ||
+			    value > static_cast<int32_t>(IGNORE_CELLS::ALL_NODATA_VALUES)) {
+				throw InvalidInputException(
+				    "Invalid value for 'ignore_nodata' parameter: %d, expected a value between %d and %d", value,
+				    static_cast<int32_t>(IGNORE_CELLS::NEVER), static_cast<int32_t>(IGNORE_CELLS::ALL_NODATA_VALUES));
+			}
+			ignore_cells = static_cast<IGNORE_CELLS>(value);
+		}
+
 		// Open the dataset.
 
 		GDALDatasetUniquePtr dataset;
@@ -1316,6 +1382,7 @@ struct RT_ReadCells {
 		result->parameters = params;
 		result->data_format = DataFormat::RAW;
 		result->skip_empty_tiles = true;
+		result->ignore_cells = ignore_cells;
 		result->make_datacube = false;
 		result->dataset = std::move(dataset);
 		result->child_datasets = std::move(child_datasets);
@@ -1455,6 +1522,32 @@ struct RT_ReadCells {
 		MemoryStream &data_buffer = data_cube.GetBuffer();
 		bool data_read = false;
 
+		// Manage the ignore_cells option, which determines how to handle cells with nodata values.
+
+		IGNORE_CELLS ignore_cells = bind_data.ignore_cells;
+
+		auto read_band_data = [&]() {
+			if (!data_read) {
+				const size_t cube_size = static_cast<size_t>(num_bands) * size_x * size_y * data_size;
+				data_buffer.GrowCapacity(cube_size);
+
+				// Read the data of all bands...
+				CPLErr read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_buffer.GetData(),
+				                                    size_x, size_y, data_type, num_bands, nullptr, 0, 0, 0, nullptr);
+
+				// Is there an error reading the tile data?
+				if (read_err != CE_None) {
+					const std::string error = RasterUtils::GetLastGdalErrorMsg();
+					throw IOException("Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
+				}
+				data_read = true;
+			}
+		};
+
+		if (ignore_cells != IGNORE_CELLS::NEVER) {
+			read_band_data();
+		}
+
 		// For each cell in the tile, evaluate the filter expressions and fill the output chunk.
 		for (int32_t i = 0; i < count; i++) {
 			const int32_t cell_id = local_cell_id + i;
@@ -1480,6 +1573,35 @@ struct RT_ReadCells {
 				RASTER_SCAN_DEBUG_LOG(3, " > cell_id=(%" PRIu64 "): tile did not match filter conditions, skipped",
 				                      (uint64_t)(row_id + i));
 				continue;
+			}
+
+			// Ignore cells with nodata values if the option is set.
+			if (ignore_cells != IGNORE_CELLS::NEVER) {
+				bool has_nodata = false;
+				double nodata_value = bind_data.nodata_value;
+
+				for (int32_t band_index = 0; band_index < num_bands; band_index++) {
+					const size_t band_offset =
+					    (band_index * size_x * size_y * data_size) + ((cell_y * size_x + cell_x) * data_size);
+
+					if (IsNoDataValue(data_buffer, band_offset, data_type, nodata_value)) {
+						has_nodata = true;
+
+						if (ignore_cells == IGNORE_CELLS::ANY_NODATA_VALUE) {
+							break;
+						}
+					} else {
+						if (ignore_cells == IGNORE_CELLS::ALL_NODATA_VALUES) {
+							has_nodata = false;
+							break;
+						}
+					}
+				}
+				if (has_nodata) {
+					RASTER_SCAN_DEBUG_LOG(3, " > cell_id=(%" PRIu64 "): tile has nodata value, skipped",
+					                      (uint64_t)(row_id + i));
+					continue;
+				}
 			}
 
 			// Fill the output chunk for the current row.
@@ -1511,22 +1633,7 @@ struct RT_ReadCells {
 					    (band_index * size_x * size_y * data_size) + ((cell_y * size_x + cell_x) * data_size);
 
 					// Read the band data?
-					if (!data_read) {
-						const size_t cube_size = static_cast<size_t>(num_bands) * size_x * size_y * data_size;
-						data_buffer.GrowCapacity(cube_size);
-
-						// Read the data of all bands...
-						CPLErr read_err =
-						    dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_buffer.GetData(),
-						                      size_x, size_y, data_type, num_bands, nullptr, 0, 0, 0, nullptr);
-
-						// Is there an error reading the tile data?
-						if (read_err != CE_None) {
-							const std::string error = RasterUtils::GetLastGdalErrorMsg();
-							throw IOException("Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
-						}
-						data_read = true;
-					}
+					read_band_data();
 
 					// Write band pixel value into the column.
 					switch (data_type) {
@@ -1676,6 +1783,7 @@ struct RT_ReadCells {
 		| `sibling_files` | VARCHAR[] | An optional list of sibling files that are required to open the file. Only for single-file version of the function. |
 		| `warp_options` | VARCHAR[] | An optional list of warp options passed to reproject or warp the raster. It accepts the same options as the GDAL `Warp` tool (https://gdal.org/en/stable/programs/gdalwarp.html). |
 		| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
+		| `ignore_nodata` | INTEGER | An optional parameter to ignore cells with nodata values. It accepts the following values: `0` (default) to never ignore cells, `1` to ignore cells with at least one band having a nodata value, and `2` to ignore cells with all bands having nodata values. |
 
 		This is the list of columns returned by `RT_ReadCells`:
 
@@ -1712,10 +1820,12 @@ struct RT_ReadCells {
 		func_01.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
 		func_01.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
 		func_01.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
+		func_01.named_parameters["ignore_nodata"] = LogicalType::INTEGER;
 
 		TableFunction func_02("RT_ReadCells", {LogicalType::LIST(LogicalType::VARCHAR)}, Execute, BindMultiFile,
 		                      RT_Read::Init);
 		func_02.named_parameters["separate_bands"] = LogicalType::BOOLEAN;
+		func_02.named_parameters["ignore_nodata"] = LogicalType::INTEGER;
 
 		for (auto *func : {&func_01, &func_02}) {
 			func->cardinality = RT_Read::Cardinality;

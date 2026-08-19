@@ -185,6 +185,11 @@ FROM
 ;
 ```
 
+`RT_ReadCells` function accepts similar parameters as `RT_Read`, but it also allows you to specify a `ignore_nodata` parameter to control how cells with nodata values are handled. The `ignore_nodata` parameter can take the following values:
+- `0`: Never ignore cells (default).
+- `1`: Ignore cells with at least one band having a nodata value.
+- `2`: Ignore cells with all bands having nodata values.
+
 ### Writing a raster file
 
 You can write a new raster file from any SQL query that produces a geometry column and one or more datacube columns. The geometry column is used to determine the spatial location and extent of each tile, while the datacube columns are used to populate the pixel values for each band.
