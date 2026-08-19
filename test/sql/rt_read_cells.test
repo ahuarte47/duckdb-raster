@@ -53,3 +53,21 @@ WHERE
 7	7	0	545543.5	4724510.0	POINT (545543.5 4724510)	107	135	84
 11	11	0	545545.5	4724510.0	POINT (545545.5 4724510)	76	124	66
 12	12	0	545546.0	4724510.0	POINT (545546 4724510)	51	99	41
+
+query I
+SELECT
+    count(*)
+FROM
+    RT_ReadCells('./test/data/nodata-sample.tiff', ignore_nodata := 0)
+;
+----
+16
+
+query I
+SELECT
+    count(*)
+FROM
+    RT_ReadCells('./test/data/nodata-sample.tiff', ignore_nodata := 1)
+;
+----
+14
