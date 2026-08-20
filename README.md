@@ -38,6 +38,7 @@ LOAD raster;
 | [`RT_Read`](docs/functions.md#rt_read) | Reads a raster file (or a mosaic of raster files) and returns a table with the raster data. |
 | [`RT_ReadCells`](docs/functions.md#rt_readcells) | Reads a raster file (or a mosaic of raster files) and returns a table with one row per value cell in the raster. |
 | [`RT_Write`](docs/functions.md#rt_write) | (`COPY TO`) Exports a data table to a new raster file. |
+| [`RT_Create`](docs/functions.md#rt_create) | Creates a new raster file from a given file name and set of parameters. |
 
 **[Scalar Functions](docs/functions.md#scalar-functions)**
 
@@ -214,6 +215,25 @@ WITH (
 	DATABAND_COLUMNS ['databand_3', 'databand_2', 'databand_1']
 );
 ```
+
+### Creating a raster file
+
+You can create a new raster file from scratch using the `RT_Create` function, which allows you to specify the file name, spatial reference system, extent, resolution, number of bands, data type, and other parameters.
+
+```sql
+SELECT
+	*
+FROM
+	RT_Create(
+		'/vsimem/raster-sample.tiff', 'EPSG:25830', 499980.0, 4789760.0, 510220.0, 4800000.0, 2048, 2048, 1, 3 /*GDT_Int16*/, -9999.0,
+		driver_name := 'Memory',
+		blocksize_x := 512,
+		blocksize_y := 512
+	)
+;
+```
+
+Please note that the `RT_Create` function creates an empty raster file with the specified parameters. You then need to populate the raster and then write it to disk using the `RT_Write` function. You can create the raster in memory (using the `Memory` driver) and finally write it to disk in a specific format (e.g. GeoTIFF, COG, etc.) with the `RT_Write` function.
 
 ### Band algebra
 

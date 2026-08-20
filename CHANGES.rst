@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+1.5.0
+++++++++++++++++++
+
+- New `RT_Create` function to create a new raster file with specified parameters (CRS, BBOX, raster size, number of bands, data type, nodata value, etc.).
+
 1.4.0
 ++++++++++++++++++
 

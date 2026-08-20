@@ -10,6 +10,7 @@
 | [`RT_Read`](#rt_read) | Reads a raster file (or a mosaic of raster files) and returns a table with the raster data. |
 | [`RT_ReadCells`](#rt_readcells) | Reads a raster file (or a mosaic of raster files) and returns a table with one row per value cell in the raster. |
 | [`RT_Write`](#rt_write) | (`COPY TO`) Exports the data table to a new raster file. |
+| [`RT_Create`](#rt_create) | Creates a new raster file from a given file name and set of parameters. |
 
 **[Scalar Functions](#scalar-functions)**
 
@@ -266,6 +267,111 @@ SELECT
     id, x, y, geometry, col, row, band_1, band_2, band_3
 FROM
     RT_ReadCells('path/to/raster/file.tif', warp_options := ['-t_srs', 'EPSG:4326', '-r', 'nearest'])
+;
+```
+
+----
+
+### RT_Create
+
+The `RT_Create` function allows you to create a new raster file from scratch by specifying the file name, spatial reference system, extent, resolution, number of bands, data type, and other parameters.
+
+Please note that the `RT_Create` function creates an empty raster file with the specified parameters. You then need to populate the raster and then write it to disk using the `RT_Write` function. You can create the raster in memory (using the `Memory` driver) and finally write it to disk in a specific format (e.g. GeoTIFF, COG, etc.) with the `RT_Write` function.
+
+> See [RT_Drivers](#rt_drivers) for a list of supported file formats and drivers.
+
+The table returned by `RT_Create` (Similar to `RT_Read`) is a tiled representation of the raster file[s], where each row corresponds to a tile of the raster. The tile size is determined by the original block size of the raster file[s], but it can be overridden by the user using the `blocksize_x` and `blocksize_y` parameters. The `geometry` column is a `GEOMETRY` of type `POLYGON` that represents the footprint of each tile, and you can use it to create a new geoparquet file by adding the option `GEOPARQUET_VERSION`.
+
+Both `databand` and `datacube` columns share the same underlying type: a BLOB encoding an N-dimensional array of pixel values. The terms are interchangeable in the context of this extension — they only differ in how `RT_Read` names the output columns. By default, `RT_Create` produces one column per raster band, named `databand_1`, `databand_2`, etc. When the `datacube` option is `true`, all bands are merged into a single column named `datacube`. In either case the BLOB layout is identical.
+
+The `RT_Create` function accepts a first set of parameters, all of them mandatory, for creating a new raster dataset:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `path` | VARCHAR | The path to the file to create. |
+| `crs` | VARCHAR | The coordinate reference system (CRS) of the raster dataset, specified as an EPSG code (e.g., 'EPSG:4326') or a WKT string. |
+| `x_min` | DOUBLE | The minimum X coordinate (left) of the raster extent. |
+| `y_min` | DOUBLE | The minimum Y coordinate (bottom) of the raster extent. |
+| `x_max` | DOUBLE | The maximum X coordinate (right) of the raster extent. |
+| `y_max` | DOUBLE | The maximum Y coordinate (top) of the raster extent. |
+| `width` | INTEGER | The width (number of columns) of the raster dataset. |
+| `height` | INTEGER | The height (number of rows) of the raster dataset. |
+| `num_bands` | INTEGER | The number of bands in the raster dataset. |
+| `data_type` | INTEGER | The GDAL data type for the raster bands (e.g., 3 for `GDT_Int16`). |
+| `nodata_value` | DOUBLE | The nodata value for the raster bands. |
+| `driver_name` | VARCHAR | The GDAL driver to use for creating the raster file. `Memory` is the default. |
+
+The `data_type` parameter is an integer that corresponds to the GDAL data type for the raster bands. The following table shows the mapping between GDAL data types and their corresponding integer values:
+
+| Code | Key | Description |
+|------|-----------|-------------|
+| 0    | UINT8 | Eight bit unsigned integer |
+| 1    | INT8 | 8-bit signed integer |
+| 2    | UINT16 | Sixteen bit unsigned integer |
+| 3    | INT16 | Sixteen bit signed integer |
+| 4    | UINT32 | Thirty two bit unsigned integer |
+| 5    | INT32 | Thirty two bit signed integer |
+| 6    | UINT64 | 64 bit unsigned integer |
+| 7    | INT64 | 64 bit signed integer |
+| 8    | FLOAT | Thirty two bit floating point |
+| 9    | DOUBLE | Sixty four bit floating point |
+
+Similar to `RT_Read`, the `RT_Create` function also accepts optional parameters for controlling the fetching of raster tiles:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `data_format` | VARCHAR | Compression format used when packing the pixel data into the BLOB. See the data format table in the BLOB structure section below. `RAW` (uncompressed) is the default. |
+| `blocksize_x` | INTEGER | The block size of the tile in the x direction. You can use this parameter to override the original block size of the raster. |
+| `blocksize_y` | INTEGER | The block size of the tile in the y direction. You can use this parameter to override the original block size of the raster. |
+| `datacube` | BOOLEAN | When `true`, all bands are merged into a single `datacube` column; otherwise each band is returned as a separate `databand_N` column. `false` is the default. |
+
+This is the list of columns returned by `RT_Create`, similar to `RT_Read`:
+
++ `id` is a unique identifier for each tile of the raster.
++ `x` and `y` are the coordinates of the center of each tile. The coordinate reference system is the same as the one of the raster file.
++ `bbox` is the bounding box of each tile, which is a struct with `xmin`, `ymin`, `xmax`, and `ymax` fields.
++ `geometry` is the footprint of each tile as a polygon.
++ `level`, `tile_x`, and `tile_y` are the tile grid coordinates. The raster is partitioned into tiles of `blocksize_x` × `blocksize_y` pixels (or the file's native block size when not overridden).
++ `cols` and `rows` are the actual pixel dimensions of the tile, which may differ from the requested block size at the edges of the raster.
++ `metadata` is a JSON column with the raster file metadata: band properties (data type, nodata value, etc.), spatial reference system, geotransform, and any driver-specific metadata.
++ `databand_1`, `databand_2`, … are BLOB columns, each holding the pixel data for one raster band together with a small binary header that describes the tile layout. When the `datacube` option is `true`, a single `datacube` column is returned instead, containing all bands in the same BLOB format.
+
+Note that GDAL is single-threaded, so this table function cannot fully exploit DuckDB parallelism.
+
+#### Signature
+
+```sql
+RT_Create (file_path VARCHAR,
+           crs VARCHAR,
+           x_min DOUBLE,
+           y_min DOUBLE,
+           x_max DOUBLE,
+           y_max DOUBLE,
+           width INTEGER,
+           height INTEGER,
+           num_bands INTEGER,
+           data_type INTEGER,
+           nodata_value DOUBLE,
+           driver_name VARCHAR DEFAULT 'Memory',
+           data_format VARCHAR DEFAULT 'RAW',
+           blocksize_x INTEGER DEFAULT NULL,
+           blocksize_y INTEGER DEFAULT NULL,
+           datacube BOOLEAN DEFAULT false
+          )
+```
+
+#### Examples
+
+```sql
+SELECT
+    *
+FROM
+    RT_Create(
+        '/vsimem/raster-sample.tiff', 'EPSG:25830', 499980.0, 4789760.0, 510220.0, 4800000.0, 2048, 2048, 1, 3 /*GDT_Int16*/, -9999.0,
+        driver_name := 'Memory',
+        blocksize_x := 512,
+        blocksize_y := 512
+    )
 ;
 ```
 
