@@ -1527,25 +1527,23 @@ struct RT_ReadCells {
 		IGNORE_CELLS ignore_cells = bind_data.ignore_cells;
 
 		auto read_band_data = [&]() {
-			if (!data_read) {
-				const size_t cube_size = static_cast<size_t>(num_bands) * size_x * size_y * data_size;
-				data_buffer.GrowCapacity(cube_size);
+			const size_t cube_size = static_cast<size_t>(num_bands) * size_x * size_y * data_size;
+			data_buffer.GrowCapacity(cube_size);
 
-				// Read the data of all bands...
-				CPLErr read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_buffer.GetData(),
-				                                    size_x, size_y, data_type, num_bands, nullptr, 0, 0, 0, nullptr);
+			// Read the data of all bands...
+			CPLErr read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_buffer.GetData(),
+			                                    size_x, size_y, data_type, num_bands, nullptr, 0, 0, 0, nullptr);
 
-				// Is there an error reading the tile data?
-				if (read_err != CE_None) {
-					const std::string error = RasterUtils::GetLastGdalErrorMsg();
-					throw IOException("Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
-				}
-				data_read = true;
+			// Is there an error reading the tile data?
+			if (read_err != CE_None) {
+				const std::string error = RasterUtils::GetLastGdalErrorMsg();
+				throw IOException("Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
 			}
 		};
 
-		if (ignore_cells != IGNORE_CELLS::NEVER) {
+		if (ignore_cells != IGNORE_CELLS::NEVER && !data_read) {
 			read_band_data();
+			data_read = true;
 		}
 
 		// For each cell in the tile, evaluate the filter expressions and fill the output chunk.
@@ -1633,7 +1631,10 @@ struct RT_ReadCells {
 					    (band_index * size_x * size_y * data_size) + ((cell_y * size_x + cell_x) * data_size);
 
 					// Read the band data?
-					read_band_data();
+					if (!data_read) {
+						read_band_data();
+						data_read = true;
+					}
 
 					// Write band pixel value into the column.
 					switch (data_type) {
