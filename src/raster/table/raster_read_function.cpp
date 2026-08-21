@@ -257,6 +257,114 @@ static GDALDataset *WarpDataset(ClientContext &context, const std::vector<std::s
 	return result;
 }
 
+//! Create a GDAL dataset given a file name and named parameters.
+static GDALDataset *CreateDataset(ClientContext &context, const std::string &file_name,
+                                  const named_parameter_map_t &params) {
+	auto input_param = params.find("create_options");
+	if (input_param == params.end() || input_param->second.type().id() != LogicalTypeId::LIST) {
+		throw InvalidInputException("Missing or invalid 'create_options' parameter for dataset creation");
+	}
+
+	auto create_options = ListValue::GetChildren(input_param->second);
+	if (create_options.size() != 10) {
+		int32_t num_options = static_cast<int32_t>(create_options.size());
+		throw InvalidInputException("Expected 10 parameters for dataset creation, got " + std::to_string(num_options));
+	}
+
+	// Fetch the parameters for creating a new raster dataset.
+
+	std::string crs = StringValue::Get(create_options[0]);
+	double x_min = create_options[1].GetValue<double>();
+	double y_min = create_options[2].GetValue<double>();
+	double x_max = create_options[3].GetValue<double>();
+	double y_max = create_options[4].GetValue<double>();
+	int32_t x_size = create_options[5].GetValue<int32_t>();
+	int32_t y_size = create_options[6].GetValue<int32_t>();
+	int32_t n_bands = create_options[7].GetValue<int32_t>();
+	int32_t data_type = create_options[8].GetValue<int32_t>();
+	double nodata_value = create_options[9].GetValue<double>();
+
+	if (crs.empty()) {
+		throw InvalidInputException("CRS string cannot be empty for dataset creation");
+	}
+	if (n_bands <= 0) {
+		throw InvalidInputException("Number of bands must be positive for dataset creation");
+	}
+	if (x_size <= 0 || y_size <= 0) {
+		throw InvalidInputException("Raster size must be positive for dataset creation");
+	}
+	if (data_type <= GDT_Unknown || data_type > GDT_Float64) {
+		throw InvalidInputException("Invalid data type for dataset creation");
+	}
+
+	// Get the driver for creating the raster file.
+
+	std::string driver_name = "Memory";
+
+	if (params.find("driver_name") != params.end()) {
+		driver_name = StringValue::Get(params.at("driver_name"));
+	}
+
+	auto driver = GetGDALDriverManager()->GetDriverByName(driver_name.c_str());
+	if (!driver) {
+		throw InvalidInputException("'" + driver_name + "' driver not found");
+	}
+
+	// Cofigure options for the driver, if any.
+
+	int32_t blocksize_x = 0;
+
+	if (params.find("blocksize_x") != params.end()) {
+		blocksize_x = params.at("blocksize_x").GetValue<int32_t>();
+
+		if (blocksize_x <= 0) {
+			throw InvalidInputException("Block size must be positive for dataset creation");
+		}
+	}
+
+	int32_t blocksize_y = 0;
+
+	if (params.find("blocksize_y") != params.end()) {
+		blocksize_y = params.at("blocksize_y").GetValue<int32_t>();
+
+		if (blocksize_y <= 0) {
+			throw InvalidInputException("Block size must be positive for dataset creation");
+		}
+	}
+
+	// Create the dataset with the specified parameters.
+
+	RASTER_SCAN_DEBUG_LOG(2, "Creating file '%s': data_type=%d, bands=%d, size=(%d x %d), extent=(%lf, %lf, %lf, %lf)",
+	                      file_name.c_str(), data_type, n_bands, x_size, y_size, x_min, y_min, x_max, y_max);
+
+	char **driver_options = nullptr;
+
+	if (blocksize_x > 0 && blocksize_y > 0) {
+		driver_options = CSLAddString(driver_options, ("BLOCKXSIZE=" + std::to_string(blocksize_x)).c_str());
+		driver_options = CSLAddString(driver_options, ("BLOCKYSIZE=" + std::to_string(blocksize_y)).c_str());
+	}
+
+	GDALDataType gdal_type = static_cast<GDALDataType>(data_type);
+	GDALDatasetUniquePtr dataset(driver->Create(file_name.c_str(), x_size, y_size, n_bands, gdal_type, driver_options));
+	dataset->SetProjection(crs.c_str());
+	double gt[6] = {x_min, (x_max - x_min) / x_size, 0, y_max, 0, (y_min - y_max) / y_size};
+	dataset->SetGeoTransform(gt);
+
+	CSLDestroy(driver_options);
+
+	for (int32_t b = 1; b <= n_bands; b++) {
+		GDALRasterBand *band = dataset->GetRasterBand(b);
+		if (!band) {
+			throw InternalException("Failed to get raster band from dataset");
+		}
+		band->SetNoDataValue(nodata_value);
+		band->Fill(nodata_value);
+	}
+	dataset->FlushCache();
+
+	return dataset.release();
+}
+
 //! Returns true if the value at the given offset in the data buffer equals the nodata sentinel (NaN-aware).
 inline static bool IsNoDataValue(const MemoryStream &data_buffer, const size_t data_offset,
                                  const GDALDataType data_type, double no_data) {
@@ -399,7 +507,7 @@ struct RT_Read {
 
 	static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
 	                                     vector<LogicalType> &return_types, vector<string> &names,
-	                                     std::vector<std::string> &file_names) {
+	                                     const std::vector<std::string> &file_names) {
 		if (file_names.empty()) {
 			throw InvalidInputException("No input files provided.");
 		}
@@ -426,10 +534,17 @@ struct RT_Read {
 		GDALDatasetUniquePtr dataset;
 		std::vector<GDALDatasetUniquePtr> child_datasets;
 
-		if (params.find("warp_options") != params.end()) {
+		if (params.find("create_options") != params.end()) {
+			dataset = GDALDatasetUniquePtr(CreateDataset(context, file_names[0], params));
+		} else if (params.find("warp_options") != params.end()) {
 			dataset = GDALDatasetUniquePtr(WarpDataset(context, file_names, params, child_datasets));
 		} else {
 			dataset = GDALDatasetUniquePtr(OpenDataset(context, file_names, params));
+		}
+
+		if (!dataset) {
+			std::string error = RasterUtils::GetLastGdalErrorMsg();
+			throw IOException("Failed to open dataset '%s': %s", file_names[0].c_str(), error.c_str());
 		}
 
 		// Fetch the dataset metadata.
@@ -1859,6 +1974,158 @@ struct RT_ReadCells {
 	}
 };
 
+//======================================================================================================================
+// RT_Create
+//======================================================================================================================
+
+struct RT_Create : public RT_Read {
+	//------------------------------------------------------------------------------------------------------------------
+	// Bind
+	//------------------------------------------------------------------------------------------------------------------
+
+	static unique_ptr<FunctionData> BindCreate(ClientContext &context, TableFunctionBindInput &input,
+	                                           vector<LogicalType> &return_types, vector<string> &names) {
+		const auto file_path = input.inputs[0].GetValue<std::string>();
+		auto &params = input.named_parameters;
+
+		// Fetch the parameters for creating a new raster dataset.
+
+		vector<Value> create_options;
+		create_options.reserve(input.inputs.size() - 1);
+
+		for (idx_t i = 1; i < input.inputs.size(); i++) {
+			create_options.emplace_back(input.inputs[i]);
+		}
+		params["create_options"] = Value::LIST(LogicalType::ANY, std::move(create_options));
+
+		// We don't want to skip empty tiles when creating a new raster dataset, otherwise all would be ignored.
+
+		params["skip_empty_tiles"] = Value::BOOLEAN(false);
+
+		// Call the base class Bind() method to handle the rest of the binding process.
+
+		return RT_Read::Bind(context, input, return_types, names, {file_path});
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Create a new raster dataset and return a table with one row per tile in the raster.
+
+		The `RT_Create` table function is based on the [GDAL](https://gdal.org/index.html) translator library and enables creating raster datasets in a variety of geospatial raster file formats as if they were DuckDB tables.
+
+		> See [RT_Drivers](#rt_drivers) for a list of supported file formats and drivers.
+
+		The `RT_Create` function accepts a first set of parameters, all of them mandatory, for creating a new raster dataset:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `path` | VARCHAR | The path to the file to create. |
+		| `crs` | VARCHAR | The coordinate reference system (CRS) of the raster dataset, specified as an EPSG code (e.g., 'EPSG:4326') or a WKT string. |
+		| `min_x` | DOUBLE | The minimum X coordinate (left) of the raster extent. |
+		| `min_y` | DOUBLE | The minimum Y coordinate (bottom) of the raster extent. |
+		| `max_x` | DOUBLE | The maximum X coordinate (right) of the raster extent. |
+		| `max_y` | DOUBLE | The maximum Y coordinate (top) of the raster extent. |
+		| `width` | INTEGER | The width (number of columns) of the raster dataset. |
+		| `height` | INTEGER | The height (number of rows) of the raster dataset. |
+		| `num_bands` | INTEGER | The number of bands in the raster dataset. |
+		| `data_type` | INTEGER | The GDAL data type for the raster bands (e.g., 3 for GDT_Int16). |
+		| `nodata_value` | DOUBLE | The nodata value for the raster bands. |
+		| `driver_name` | VARCHAR | The GDAL driver to use for creating the raster file. `Memory` is the default. |
+
+		Similar to `RT_Read`, the `RT_Create` function also accepts optional parameters for controlling the fetching of raster tiles:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `data_format` | VARCHAR | Compression format used when packing the pixel data into the BLOB. See the data format table in the BLOB structure section below. `RAW` (uncompressed) is the default. |
+		| `blocksize_x` | INTEGER | The block size of the tile in the x direction. You can use this parameter to override the original block size of the raster. |
+		| `blocksize_y` | INTEGER | The block size of the tile in the y direction. You can use this parameter to override the original block size of the raster. |
+		| `datacube` | BOOLEAN | When `true`, all bands are merged into a single `datacube` column; otherwise each band is returned as a separate `databand_N` column. `false` is the default. |
+
+		This is the list of columns returned by `RT_Create`, similar to `RT_Read`:
+
+		+ `id` is a unique identifier for each tile of the raster.
+		+ `x` and `y` are the coordinates of the center of each tile. The coordinate reference system is the same as the one of the raster file.
+		+ `bbox` is the bounding box of each tile, which is a struct with `xmin`, `ymin`, `xmax`, and `ymax` fields.
+		+ `geometry` is the footprint of each tile as a polygon.
+		+ `level`, `tile_x`, and `tile_y` are the tile grid coordinates. The raster is partitioned into tiles of `blocksize_x` × `blocksize_y` pixels (or the file's native block size when not overridden).
+		+ `cols` and `rows` are the actual pixel dimensions of the tile, which may differ from the requested block size at the edges of the raster.
+		+ `metadata` is a JSON column with the raster file metadata: band properties (data type, nodata value, etc.), spatial reference system, geotransform, and any driver-specific metadata.
+		+ `databand_1`, `databand_2`, … are BLOB columns, each holding the pixel data for one raster band together with a small binary header that describes the tile layout. When the `datacube` option is `true`, a single `datacube` column is returned instead, containing all bands in the same BLOB format.
+
+		Note that GDAL is single-threaded, so this table function cannot fully exploit DuckDB parallelism.
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT
+			*
+		FROM
+    		RT_Create(
+	    	    '/vsimem/raster-sample.tiff', 'EPSG:25830', 499980.0, 4789760.0, 510220.0, 4800000.0, 2048, 2048, 1, 3 /*GDT_Int16*/, -9999.0,
+    	    	driver_name := 'Memory',
+        		blocksize_x := 512,
+        		blocksize_y := 512
+    		)
+		;
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "table");
+
+		// Configure the functions and register them in the function set.
+
+		TableFunctionSet function_set("RT_Create");
+
+		TableFunction func_01("RT_Create",
+		                      {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::DOUBLE, LogicalType::DOUBLE,
+		                       LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::INTEGER, LogicalType::INTEGER,
+		                       LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::DOUBLE},
+		                      Execute, BindCreate, Init);
+
+		for (auto *func : {&func_01}) {
+			func->cardinality = Cardinality;
+			func->table_scan_progress = Progress;
+
+			// Common optional parameters
+			func->named_parameters["driver_name"] = LogicalType::VARCHAR;
+			func->named_parameters["data_format"] = LogicalType::VARCHAR;
+			func->named_parameters["blocksize_x"] = LogicalType::INTEGER;
+			func->named_parameters["blocksize_y"] = LogicalType::INTEGER;
+			func->named_parameters["datacube"] = LogicalType::BOOLEAN;
+
+			// Enable projection pushdown - allows DuckDB to tell us which columns are needed
+			// The column_ids will be passed to InitGlobal via TableFunctionInitInput
+			func->projection_pushdown = true;
+
+			// Enable complex filter pushdown - handles expressions like (A AND B) OR (C AND D)
+			// that cannot be represented as simple TableFilter objects
+			func->pushdown_complex_filter = PushdownComplexFilter;
+
+			function_set.AddFunction(*func);
+		}
+
+		RegisterFunction<TableFunctionSet>(loader, function_set, CatalogType::TABLE_FUNCTION_ENTRY, DESCRIPTION,
+		                                   EXAMPLE, tags);
+
+		// Replacement scan
+		auto &db = loader.GetDatabaseInstance();
+		auto &config = DBConfig::GetConfig(db);
+
+		// Register optimizer extension for LIMIT pushdown
+		OptimizerExtension raster_optimizer;
+		raster_optimizer.optimize_function = RT_Read::Optimize;
+		OptimizerExtension::Register(config, std::move(raster_optimizer));
+	}
+};
+
 } // namespace
 
 // #####################################################################################################################
@@ -1869,6 +2136,7 @@ void RasterReadFunction::Register(ExtensionLoader &loader) {
 	// Register functions
 	RT_Read::Register(loader);
 	RT_ReadCells::Register(loader);
+	RT_Create::Register(loader);
 }
 
 } // namespace duckdb
