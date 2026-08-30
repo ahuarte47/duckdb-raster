@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+1.5.1
+++++++++++++++++++
+
+- Fix SELECT count(*) statement when using WHERE clauses.
+
 1.5.0
 ++++++++++++++++++
 
