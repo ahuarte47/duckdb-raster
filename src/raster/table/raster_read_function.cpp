@@ -453,7 +453,7 @@ struct RT_Read {
 		idx_t row_count = 0;
 
 		// Pushdown filter expressions.
-		vector<std::unique_ptr<Expression>> filter_expressions;
+		vector<unique_ptr<Expression>> filter_expressions;
 
 		~BindData() override {
 			// Ensure the GDAL dataset is properly closed when the bind data is destroyed.
@@ -782,6 +782,28 @@ struct RT_Read {
 		auto &bind_data = const_cast<BindData &>(input.bind_data->Cast<BindData>());
 		bind_data.column_ids = input.column_ids;
 
+		// The filter expressions built in PushdownComplexFilter reference columns by their absolute table
+		// column index (since the final projection wasn't known yet at that point). Remap them now to the
+		// position within the final projected column list, since that is what FilterEval's input DataChunk
+		// is built with (see filter_eval.cpp).
+		if (!bind_data.filter_expressions.empty()) {
+			unordered_map<idx_t, idx_t> table_col_to_position;
+
+			for (idx_t i = 0; i < bind_data.column_ids.size(); i++) {
+				table_col_to_position[bind_data.column_ids[i]] = i;
+			}
+			for (auto &expr : bind_data.filter_expressions) {
+				ExpressionIterator::VisitExpressionMutable<BoundReferenceExpression>(
+				    expr, [&table_col_to_position](BoundReferenceExpression &bound_ref, unique_ptr<Expression> &) {
+					    const auto entry = table_col_to_position.find(bound_ref.index);
+					    if (entry == table_col_to_position.end()) {
+						    throw InternalException("Filter column was pruned from the projected columns");
+					    }
+					    bound_ref.index = entry->second;
+				    });
+			}
+		}
+
 		return make_uniq_base<GlobalTableFunctionState, State>();
 	}
 
@@ -854,7 +876,8 @@ struct RT_Read {
 
 		// Catch filter expressions for later evaluation during scanning if possible.
 		if (!expressions.empty()) {
-			vector<std::unique_ptr<Expression>> temp_expressions;
+			const auto &column_ids = get.GetColumnIds();
+			vector<unique_ptr<Expression>> temp_expressions;
 			bool do_pushdown = true;
 
 			for (const auto &expr : expressions) {
@@ -867,8 +890,13 @@ struct RT_Read {
 				// to BoundReferenceExpression, so that one ExpressionExecutor can execute them during scanning.
 				// Also, we check if the filter expressions reference any BLOB data band columns, we only want
 				// to prefilter tiles on "small" columns without preloading the entire "big" BLOBs.
+				// The index is temporarily set to the *absolute* table column index (rather than the position
+				// within the current projection), because projection pushdown (which can add/remove/reorder
+				// columns, e.g. for `count(*)` queries) runs after this callback. Init() remaps these indices to
+				// the final projected column positions once bind_data.column_ids is known.
 				ExpressionIterator::VisitExpressionClassMutable(
-				    expr_copy, ExpressionClass::BOUND_COLUMN_REF, [&do_pushdown](unique_ptr<Expression> &child) {
+				    expr_copy, ExpressionClass::BOUND_COLUMN_REF,
+				    [&do_pushdown, &column_ids](unique_ptr<Expression> &child) {
 					    if (do_pushdown) {
 						    const auto &col_ref = child->Cast<BoundColumnRefExpression>();
 						    const auto &type_id = col_ref.return_type.id();
@@ -880,9 +908,9 @@ struct RT_Read {
 						    }
 
 						    const auto &column_alias = col_ref.GetAlias();
-						    const auto &column_index = col_ref.binding.column_index;
 						    const auto &return_type = col_ref.return_type;
-						    child = make_uniq<BoundReferenceExpression>(column_alias, return_type, column_index);
+						    const idx_t table_col = column_ids[col_ref.binding.column_index].GetPrimaryIndex();
+						    child = make_uniq<BoundReferenceExpression>(column_alias, return_type, table_col);
 					    }
 				    });
 
@@ -890,6 +918,12 @@ struct RT_Read {
 			}
 			if (do_pushdown) {
 				bind_data.filter_expressions = std::move(temp_expressions);
+
+				// Do NOT clear 'expressions' here: keeping the filter in the logical plan ensures the referenced
+				// columns stay 'used' for the projection-pushdown optimizer (otherwise columns only needed by the
+				// filter, but not by the query's output, e.g. count(*), get pruned from the scan's column set).
+				// DuckDB will still apply the filter on top of the scan; the copy above is only an optimization to
+				// skip non-matching rows early during scanning.
 			}
 		}
 	}

@@ -16,7 +16,7 @@ namespace duckdb {
  */
 class FilterContext {
 public:
-	FilterContext(ClientContext &context, const vector<std::unique_ptr<Expression>> &expressions,
+	FilterContext(ClientContext &context, const vector<unique_ptr<Expression>> &expressions,
 	              const vector<column_t> &column_ids, const vector<LogicalType> &column_types)
 	    : context(context), expressions(expressions), column_ids(column_ids), column_types(column_types) {
 	}
@@ -25,7 +25,7 @@ public:
 	//! The client context for expression execution.
 	ClientContext &context;
 	//! The set of filter expressions to evaluate.
-	const vector<std::unique_ptr<Expression>> &expressions;
+	const vector<unique_ptr<Expression>> &expressions;
 	//! The map column indices to table columns.
 	const vector<column_t> &column_ids;
 	//! The types of the columns.
