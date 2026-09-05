@@ -1,7 +1,12 @@
 add_subdirectory(proj)
 
 set(EXTENSION_SOURCES
-    ${EXTENSION_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/gdal_module.cpp
-    ${EXTENSION_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/geos_module.cpp
-    ${EXTENSION_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/proj_module.cpp
+    ${EXTENSION_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/gdal_dataset_io.cpp
+    ${EXTENSION_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/gdal_module.cpp
+    ${EXTENSION_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/geos_module.cpp
+    ${EXTENSION_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/proj_module.cpp
     PARENT_SCOPE)
