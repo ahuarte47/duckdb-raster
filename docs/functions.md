@@ -16,6 +16,7 @@
 
 | Function | Summary |
 | --- | --- |
+| [`RT_Metadata`](#rt_metadata) | Retrieves the metadata of a raster file, returning it as a JSON string. |
 | [`RT_Array2Cube`](#rt_array2cube) | Packages a plain SQL array into a datacube column. |
 | [`RT_Cube2Array`](#rt_cube2array) | Extracts pixel values from a datacube column into a plain SQL array. |
 | [`RT_Cube2Type`](#rt_cube2type) | Changes the pixel data type of a datacube. |
@@ -471,6 +472,28 @@ WITH (
 ----
 
 ## Scalar Functions
+
+### RT_Metadata
+
+Retrieves the metadata of a raster file, returning it as a JSON string.
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `filepath` | VARCHAR | The path to the raster file whose metadata will be retrieved. |
+
+#### Signature
+
+```sql
+RT_Metadata (filepath VARCHAR)
+```
+
+#### Examples
+
+```sql
+SELECT RT_Metadata('path/to/raster/file.tif');
+```
+
+----
 
 ### RT_Array2Cube
 

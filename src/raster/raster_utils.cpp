@@ -69,6 +69,108 @@ int RasterUtils::GetSrid(const char *proj_def) {
 	return srid;
 }
 
+std::string RasterUtils::GetMetadataOfDataset(GDALDataset *dataset) {
+	if (!dataset) {
+		throw InvalidInputException("GDAL dataset is null.");
+	}
+
+	const int raster_size_x = dataset->GetRasterXSize();
+	const int raster_size_y = dataset->GetRasterYSize();
+
+	int block_size_x, block_size_y;
+	GDALRasterBand *band = dataset->GetRasterBand(1);
+	band->GetBlockSize(&block_size_x, &block_size_y);
+
+	std::string crs = "";
+	const char *proj_ref = dataset->GetProjectionRef();
+
+	if (proj_ref && strlen(proj_ref) > 0) {
+		int srid = RasterUtils::GetSrid(proj_ref);
+		if (srid != 0) {
+			crs = StringUtil::Format("EPSG:%d", srid);
+		} else {
+			crs = proj_ref;
+		}
+	}
+
+	double gt[6] = {0};
+	if (dataset->GetGeoTransform(gt) != CE_None) {
+		gt[1] = 1.0;
+		gt[5] = -1.0;
+	}
+
+	const Point2D pt0 = RasterUtils::RasterCoordToWorldCoord(gt, 0, 0);
+	const Point2D pt1 = RasterUtils::RasterCoordToWorldCoord(gt, raster_size_x, 0);
+	const Point2D pt2 = RasterUtils::RasterCoordToWorldCoord(gt, raster_size_x, raster_size_y);
+	const Point2D pt3 = RasterUtils::RasterCoordToWorldCoord(gt, 0, raster_size_y);
+
+	const double x_min = MinValue<double>(MinValue<double>(pt0.x, pt1.x), MinValue<double>(pt2.x, pt3.x));
+	const double y_min = MinValue<double>(MinValue<double>(pt0.y, pt1.y), MinValue<double>(pt2.y, pt3.y));
+	const double x_max = MaxValue<double>(MaxValue<double>(pt0.x, pt1.x), MaxValue<double>(pt2.x, pt3.x));
+	const double y_max = MaxValue<double>(MaxValue<double>(pt0.y, pt1.y), MaxValue<double>(pt2.y, pt3.y));
+
+	const std::string geometry_wkt = StringUtil::Format("POLYGON((%f %f, %f %f, %f %f, %f %f, %f %f))", pt0.x, pt0.y,
+	                                                    pt1.x, pt1.y, pt2.x, pt2.y, pt3.x, pt3.y, pt0.x, pt0.y);
+
+	std::ostringstream metadata_ds;
+	metadata_ds << std::fixed;
+	metadata_ds << "{";
+	metadata_ds << "\"file_format\": \"raster\", ";
+	metadata_ds << "\"version\": \"0.1.0\", ";
+	metadata_ds << "\"data_format\": \"RAW\", ";
+	metadata_ds << "\"datacube\": false, ";
+	metadata_ds << "\"crs\": \"" << crs << "\", ";
+	metadata_ds << "\"transform\": [" << gt[0] << ", " << gt[1] << ", " << gt[2] << ", " << gt[3] << ", " << gt[4]
+	            << ", " << gt[5] << "], ";
+	metadata_ds << "\"bounds\": [" << x_min << ", " << y_min << ", " << x_max << ", " << y_max << "], ";
+	metadata_ds << "\"geometry\": \"" << geometry_wkt << "\", ";
+	metadata_ds << "\"width\": " << raster_size_x << ", ";
+	metadata_ds << "\"height\": " << raster_size_y << ", ";
+	metadata_ds << "\"blocksize_x\": " << block_size_x << ", ";
+	metadata_ds << "\"blocksize_y\": " << block_size_y << ", ";
+	metadata_ds << "\"band_count\": " << dataset->GetRasterCount() << ", ";
+	metadata_ds << "\"bands\": [";
+
+	for (int b = 1; b <= dataset->GetRasterCount(); b++) {
+		GDALRasterBand *band = dataset->GetRasterBand(b);
+
+		int has_nodata = 0;
+		int has_scale = 0;
+		int has_offset = 0;
+		const GDALDataType data_type = band->GetRasterDataType();
+		const char *label = band->GetDescription();
+		const double nodata = band->GetNoDataValue(&has_nodata);
+		const double scale = band->GetScale(&has_scale);
+		const double offset = band->GetOffset(&has_offset);
+		const GDALColorInterp color_interp = band->GetColorInterpretation();
+		const char *unit_type = band->GetUnitType();
+
+		std::string band_name = StringUtil::Format("band_%d", b);
+		metadata_ds << "{";
+		metadata_ds << "\"name\": \"band_" << (b - 1) << "\", ";
+		metadata_ds << "\"description\": \"" << (label && strlen(label) > 0 ? label : "") << "\", ";
+		metadata_ds << "\"type_name\": \"" << GDALGetDataTypeName(data_type) << "\", ";
+		metadata_ds << "\"data_type\": " << data_type << ", ";
+		metadata_ds << "\"data_size\": " << GDALGetDataTypeSizeBytes(data_type) << ", ";
+		metadata_ds << "\"width\": " << block_size_x << ", ";
+		metadata_ds << "\"height\": " << block_size_y << ", ";
+		metadata_ds << "\"colorinterp\": " << color_interp << ", ";
+		metadata_ds << "\"nodata\": " << (has_nodata ? std::to_string(nodata) : "null") << ", ";
+		metadata_ds << "\"scale\": " << (has_scale ? std::to_string(scale) : "null") << ", ";
+		metadata_ds << "\"offset\": " << (has_offset ? std::to_string(offset) : "null") << ", ";
+		metadata_ds << "\"unit\": \"" << (unit_type && strlen(unit_type) > 0 ? unit_type : "") << "\"";
+		metadata_ds << "}";
+
+		if (b < dataset->GetRasterCount()) {
+			metadata_ds << ", ";
+		}
+	}
+	metadata_ds << "]";
+	metadata_ds << "}";
+
+	return metadata_ds.str();
+}
+
 RasterTransformMatrix RasterUtils::GetTransformMatrix(const string &metadata) {
 	RasterTransformMatrix matrix;
 

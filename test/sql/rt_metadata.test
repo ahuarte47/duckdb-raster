@@ -1,0 +1,10 @@
+# name: test/sql/rt_metadata.test
+# description: test raster extension
+# group: [sql]
+
+require raster
+
+query I
+SELECT CAST(RT_Metadata('./test/data/overlay-sample.tiff') AS VARCHAR);
+----
+{"file_format": "raster", "version": "0.1.0", "data_format": "RAW", "datacube": false, "crs": "EPSG:25830", "transform": [545539.750000, 0.500000, 0.000000, 4724510.250000, 0.000000, -0.500000], "bounds": [545539.750000, 4724420.250000, 545699.750000, 4724510.250000], "geometry": "POLYGON((545539.750000 4724510.250000, 545699.750000 4724510.250000, 545699.750000 4724420.250000, 545539.750000 4724420.250000, 545539.750000 4724510.250000))", "width": 320, "height": 180, "blocksize_x": 320, "blocksize_y": 8, "band_count": 3, "bands": [{"name": "band_0", "description": "", "type_name": "Byte", "data_type": 1, "data_size": 1, "width": 320, "height": 8, "colorinterp": 3, "nodata": null, "scale": null, "offset": null, "unit": ""}, {"name": "band_1", "description": "", "type_name": "Byte", "data_type": 1, "data_size": 1, "width": 320, "height": 8, "colorinterp": 4, "nodata": null, "scale": null, "offset": null, "unit": ""}, {"name": "band_2", "description": "", "type_name": "Byte", "data_type": 1, "data_size": 1, "width": 320, "height": 8, "colorinterp": 5, "nodata": null, "scale": null, "offset": null, "unit": ""}]}

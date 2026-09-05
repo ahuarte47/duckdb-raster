@@ -44,6 +44,7 @@ LOAD raster;
 
 | Function | Summary |
 | --- | --- |
+| [`RT_Metadata`](docs/functions.md#rt_metadata) | Retrieves the metadata of a raster file, returning it as a JSON string. |
 | [`RT_Array2Cube`](docs/functions.md#rt_array2cube) | Packages a plain SQL array into a datacube column. |
 | [`RT_Cube2Array`](docs/functions.md#rt_cube2array) | Extracts pixel values from a datacube column into a plain SQL array. |
 | [`RT_Cube2Type`](docs/functions.md#rt_cube2type) | Changes the pixel data type of a datacube. |

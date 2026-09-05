@@ -49,6 +49,9 @@ public:
 	//! Convert geographic world coordinate to raster raster coordinate.
 	static RasterCoord WorldCoordToRasterCoord(const double (&matrix)[6], const Point2D &coord);
 
+	//! Get the metadata of a GDAL dataset as a JSON string.
+	static std::string GetMetadataOfDataset(GDALDataset *dataset);
+
 	//! Build a RasterTransformMatrix from tile metadata.
 	static RasterTransformMatrix GetTransformMatrix(const string &metadata);
 
