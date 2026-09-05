@@ -842,13 +842,13 @@ SELECT RT_GdalConfig('AWS_NO_SIGN_REQUEST', 'YES');
 
 ### RT_RasterValue
 
-Returns the value in a band of a datacube at the specified pixel coordinates (column, row).
+Returns the value in a band of a datacube or filepath at the specified pixel coordinates (column, row).
 
 The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The input datacube column. |
+| [`databand`, `filepath`] | [DATACUBE, VARCHAR] | The input datacube column or filepath to the raster. |
 | `band` | INTEGER | The 0-based index of the band to read the value from. |
 | `col` | INTEGER | The pixel column index within the tile. |
 | `row` | INTEGER | The pixel row index within the tile. |
@@ -857,7 +857,7 @@ The function accepts the following parameters:
 #### Signature
 
 ```sql
-RT_RasterValue (datacube DATACUBE,
+RT_RasterValue ([datacube DATACUBE, filepath VARCHAR],
                 band INTEGER,
                 col INTEGER,
                 row INTEGER,
@@ -872,18 +872,23 @@ SELECT
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
+
+SELECT
+    RT_RasterValue('path/to/raster/file.tif', 0, 10, 20, -9999.0),
+    RT_RasterValue('path/to/raster/file.tif', 0, 20, 20, -9999.0)
+;
 ```
 ----
 
 ### RT_RasterValues
 
-Returns the values in a band of a datacube at the specified array of pixel coordinates (column, row).
+Returns the values in a band of a datacube or filepath at the specified array of pixel coordinates (column, row).
 
 The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The input datacube column. |
+| [`databand`, `filepath`] | [DATACUBE, VARCHAR] | The input datacube column or filepath to the raster. |
 | `band` | INTEGER | The 0-based index of the band to read the values from. |
 | `cols` | INTEGER[] | The array of pixel column indices within the tile. |
 | `rows` | INTEGER[] | The array of pixel row indices within the tile. |
@@ -892,7 +897,7 @@ The function accepts the following parameters:
 #### Signature
 
 ```sql
-RT_RasterValues (datacube DATACUBE,
+RT_RasterValues ([databand DATACUBE, filepath VARCHAR],
                  band INTEGER,
                  cols INTEGER[],
                  rows INTEGER[],
@@ -907,13 +912,17 @@ SELECT
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
+
+SELECT
+    RT_RasterValues('path/to/raster/file.tif', 0, [10, 11], [20, 21], -9999.0)
+;
 ```
 
 ----
 
 ### RT_CoordValue
 
-Returns the value in a band of a datacube at the given world coordinates (x, y).
+Returns the value in a band of a datacube or filepath at the given world coordinates (x, y).
 
 The function converts the world coordinates to pixel coordinates using the affine geotransform matrix provided in the `metadata` argument, and then retrieves the value at those pixel coordinates. If the coordinates are out of bounds of the tile, the function returns the specified `default_value`.
 
@@ -921,11 +930,11 @@ The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The input datacube column. |
+| [`databand`, `filepath`] | [DATACUBE, VARCHAR] | The input datacube column or filepath to the raster. |
 | `band` | INTEGER | The 0-based index of the band to read the value from. |
 | `x` | DOUBLE | The x coordinate in the same spatial reference system as the raster. |
 | `y` | DOUBLE | The y coordinate in the same spatial reference system as the raster. |
-| `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size. |
+| `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size (Only required for datacube input). |
 | `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
 
 The `metadata` argument is expected to contain the affine geotransform matrix and block size of the tile, which are used to convert between pixel coordinates and world coordinates.
@@ -942,6 +951,12 @@ RT_CoordValue (datacube DATACUBE,
                y DOUBLE,
                metadata JSON,
                default_value DOUBLE)
+
+RT_CoordValue (filepath VARCHAR,
+               band INTEGER,
+               x DOUBLE,
+               y DOUBLE,
+               default_value DOUBLE)
 ```
 
 #### Examples
@@ -952,23 +967,28 @@ SELECT
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
+
+SELECT
+    RT_CoordValue('path/to/raster/file.tif', 0, 545600.0, 4724500.0, -9999.0) AS v1,
+    RT_CoordValue('path/to/raster/file.tif', 0, 545800.0, 4724800.0, -9999.0) AS v2
+;
 ```
 
 ----
 
 ### RT_CoordValues
 
-Returns the values in a band of a datacube at the specified array of world coordinates (x, y).
+Returns the values in a band of a datacube or filepath at the specified array of world coordinates (x, y).
 
 The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The input datacube column. |
+| [`databand`, `filepath`] | [DATACUBE, VARCHAR] | The input datacube column or the filepath to the raster. |
 | `band` | INTEGER | The 0-based index of the band to read the values from. |
 | `xs` | DOUBLE[] | The array of x-coordinates of the pixels within the tile. |
 | `ys` | DOUBLE[] | The array of y-coordinates of the pixels within the tile. |
-| `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size. |
+| `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size (Only required for datacube input). |
 | `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
 
 #### Signature
@@ -980,6 +1000,12 @@ RT_CoordValues (datacube DATACUBE,
                 ys DOUBLE[],
                 metadata JSON,
                 default_value DOUBLE)
+
+RT_CoordValues (filepath VARCHAR,
+                band INTEGER,
+                xs DOUBLE[],
+                ys DOUBLE[],
+                default_value DOUBLE)
 ```
 
 #### Examples
@@ -989,6 +1015,10 @@ SELECT
     RT_CoordValues(databand_1, 0, [545600.0, 545601.0], [4724500.0, 4724501.0], metadata, -9999.0)
 FROM
     RT_Read('path/to/raster/file.tif')
+;
+
+SELECT
+    RT_CoordValues('path/to/raster/file.tif', 0, [545600.0, 545601.0], [4724500.0, 4724501.0], -9999.0)
 ;
 ```
 
