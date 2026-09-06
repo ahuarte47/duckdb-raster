@@ -1,6 +1,14 @@
 Release history
 ---------------
 
+1.6.0
+++++++++++++++++++
+
+- New `RT_Metadata` function to retrieve metadata of a raster file as a JSON string.
+- Functions `RT_RasterValue` and `RT_RasterValues` accept a raster file path as input as well.
+- Functions `RT_CoordValue` and `RT_CoordValues` accept a raster file path as input as well.
+- New `RT_Stats` function to calculate statistics for a specific band of a raster, optionally within a geometry.
+
 1.5.1
 ++++++++++++++++++
 
