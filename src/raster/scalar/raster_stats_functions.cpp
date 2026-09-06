@@ -1,4 +1,5 @@
 #include "raster_stats_functions.hpp"
+#include "raster_types.hpp"
 #include "raster_utils.hpp"
 #include "data_cube.hpp"
 #include "function_builder.hpp"
@@ -11,11 +12,84 @@
 
 // GEOS
 #include "geos_c.h"
+#include "modules/gdal_dataset_io.hpp"
 #include "modules/geos_module.hpp"
 
 namespace duckdb {
 
 namespace {
+
+//======================================================================================================================
+// Utilities
+//======================================================================================================================
+
+//! Load the data of a specific band from a GDAL dataset into a DataCube.
+static RasterBounds LoadDataCubeBand(GDALDataset *dataset, const int32_t band_index, const GeometryExtent &bounds,
+                                     DataCube &data_cube) {
+	const int32_t raster_size_x = dataset->GetRasterXSize();
+	const int32_t raster_size_y = dataset->GetRasterYSize();
+
+	GDALRasterBand *band = dataset->GetRasterBand(band_index + 1);
+	const GDALDataType data_type = band->GetRasterDataType();
+	const int data_size = GDALGetDataTypeSizeBytes(data_type);
+
+	int has_nodata = 0;
+	double nodata = band->GetNoDataValue(&has_nodata);
+	nodata = has_nodata ? nodata : NumericLimits<double>::Minimum();
+
+	int32_t offset_x = 0;
+	int32_t offset_y = 0;
+	int32_t size_x = raster_size_x;
+	int32_t size_y = raster_size_y;
+
+	// Calculate the offset and size of the region of interest within the raster.
+	if (bounds.HasXY()) {
+		double x_min = bounds.x_min;
+		double y_min = bounds.y_min;
+		double x_max = bounds.x_max;
+		double y_max = bounds.y_max;
+
+		double gt[6] = {0};
+		if (dataset->GetGeoTransform(gt) != CE_None) {
+			gt[1] = 1.0;
+			gt[5] = -1.0;
+		}
+
+		RasterCoord pt0 = RasterUtils::WorldCoordToRasterCoord(gt, x_min, y_min);
+		RasterCoord pt1 = RasterUtils::WorldCoordToRasterCoord(gt, x_max, y_min);
+		RasterCoord pt2 = RasterUtils::WorldCoordToRasterCoord(gt, x_max, y_max);
+		RasterCoord pt3 = RasterUtils::WorldCoordToRasterCoord(gt, x_min, y_max);
+
+		// Compute the bounding window of the region of interest.
+		offset_x = MaxValue(0, MinValue(MinValue(pt0.col, pt1.col), MinValue(pt2.col, pt3.col)));
+		offset_y = MaxValue(0, MinValue(MinValue(pt0.row, pt1.row), MinValue(pt2.row, pt3.row)));
+		const int32_t max_col = MaxValue(MaxValue(pt0.col, pt1.col), MaxValue(pt2.col, pt3.col));
+		const int32_t max_row = MaxValue(MaxValue(pt0.row, pt1.row), MaxValue(pt2.row, pt3.row));
+		size_x = MaxValue(0, MinValue(raster_size_x, max_col + 1) - offset_x);
+		size_y = MaxValue(0, MinValue(raster_size_y, max_row + 1) - offset_y);
+	}
+
+	// Prepare the data cube where the raster band data will be stored.
+
+	DataHeader header = {DataFormat::Value::RAW, RasterUtils::GdalTypeToDataType(data_type), 1, size_x, size_y, nodata};
+	data_cube.SetHeader(header, true);
+
+	MemoryStream &data_buffer = data_cube.GetBuffer();
+	const size_t cube_size = static_cast<size_t>(1) * size_x * size_y * data_size;
+	data_buffer.GrowCapacity(cube_size);
+
+	// Read the data of the desired band.
+
+	data_ptr_t data_ptr = data_buffer.GetData() + sizeof(DataHeader);
+	CPLErr read_err =
+	    band->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_ptr, size_x, size_y, data_type, 0, 0, nullptr);
+
+	if (read_err != CE_None) {
+		const std::string error = RasterUtils::GetLastGdalErrorMsg();
+		throw IOException("Failed to read the file: %s", error.c_str());
+	}
+	return RasterBounds(offset_x, offset_x + size_x, offset_y, offset_y + size_y);
+}
 
 //======================================================================================================================
 // RT_Stats
@@ -637,6 +711,224 @@ struct RT_Stats_Agg {
 	}
 };
 
+//======================================================================================================================
+// RT_RasterStats
+//======================================================================================================================
+
+struct RT_RasterStats {
+	//------------------------------------------------------------------------------------------------------------------
+	// Init Local (Only for the ExecuteGeom function)
+	//------------------------------------------------------------------------------------------------------------------
+
+	static unique_ptr<FunctionLocalState> InitLocal(ExpressionState &state, const BoundFunctionExpression &expr,
+	                                                FunctionData *bind_data) {
+		return make_uniq<GEOSLocalState>();
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Calculate statistics of a band in a raster.
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 2);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		DataCube data_cube(Allocator::Get(state.GetContext()));
+
+		auto &client_context = state.GetContext();
+		GDALDatasetUniquePtr dataset;
+		std::string dataset_path;
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
+		for (idx_t i = 0; i < count; i++) {
+			const std::string file_path = args.data[0].GetValue(i).GetValue<string>();
+
+			// Validate the input parameters.
+
+			const int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
+			if (band_index < 0) {
+				throw InvalidInputException("Band index cannot be negative");
+			}
+
+			// Open the dataset if the file path has changed.
+
+			if (dataset_path != file_path) {
+				dataset = GDALDatasetUniquePtr(DuckDBDatasetFactory::OpenDataset(client_context, {file_path}, {}));
+				dataset_path = file_path;
+			}
+
+			if (band_index >= dataset->GetRasterCount()) {
+				throw InvalidInputException("Band index out of range");
+			}
+
+			LoadDataCubeBand(dataset.get(), band_index, GeometryExtent::Unknown(), data_cube);
+
+			// Compute statistics for the specified band.
+
+			RT_Stats::CubeStats stats;
+			auto stats_func = [&stats](const CubeCellValue &v) {
+				stats.Update(v);
+			};
+			DataCube::Apply(stats_func, data_cube, 0);
+
+			// Set the result.
+			result.SetValue(i, stats.ToValue());
+		}
+	}
+
+	//! Calculate statistics of a band in a raster for those valid (non-nodata) cells that fall within a geometry.
+	static void ExecuteGeom(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 3);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		DataCube data_cube(Allocator::Get(state.GetContext()));
+
+		auto &client_context = state.GetContext();
+		GDALDatasetUniquePtr dataset;
+		std::string dataset_path;
+
+		GEOSLocalState &glocal_state = ExecuteFunctionState::GetFunctionState(state)->Cast<GEOSLocalState>();
+		GEOSContextHandle_t geos_ctx = glocal_state.ctx;
+		Point2D points[4];
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
+		for (idx_t i = 0; i < count; i++) {
+			const std::string file_path = args.data[0].GetValue(i).GetValue<string>();
+
+			// Validate the input parameters.
+
+			const int32_t band_index = args.data[1].GetValue(i).GetValue<int32_t>();
+			if (band_index < 0) {
+				throw InvalidInputException("Band index cannot be negative");
+			}
+
+			// Open the dataset if the file path has changed.
+
+			if (dataset_path != file_path) {
+				dataset = GDALDatasetUniquePtr(DuckDBDatasetFactory::OpenDataset(client_context, {file_path}, {}));
+				dataset_path = file_path;
+			}
+
+			if (band_index >= dataset->GetRasterCount()) {
+				throw InvalidInputException("Band index out of range");
+			}
+
+			GEOSGeometry *raw_geom = GEOSLocalState::CreateGeometry(geos_ctx, args.data[2].GetValue(i));
+			GEOSIntersectsGeometry wrap_geom(geos_ctx, raw_geom);
+			GeometryExtent bbox_geom = GEOSLocalState::GetGeometryExtent(geos_ctx, raw_geom);
+
+			RasterBounds window = LoadDataCubeBand(dataset.get(), band_index, bbox_geom, data_cube);
+			const DataHeader header = data_cube.GetHeader();
+
+			// Compute zonal statistics for the specified band.
+
+			double gt[6] = {0};
+			if (dataset->GetGeoTransform(gt) != CE_None) {
+				gt[1] = 1.0;
+				gt[5] = -1.0;
+			}
+
+			// Shift the origin so pixel (0,0) of the cropped window maps to its real world position.
+			Point2D origin = RasterUtils::RasterCoordToWorldCoord(gt, window.min_col, window.min_row);
+			gt[0] = origin.x;
+			gt[3] = origin.y;
+
+			RT_Stats::CubeStats stats;
+			auto stats_func = [&](const CubeCellValue &v) {
+				RasterCoord coord = v.GetCoord(header);
+
+				int32_t tx = coord.col;
+				int32_t ty = coord.row;
+				points[0] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty);
+				points[1] = RasterUtils::RasterCoordToWorldCoord(gt, tx, ty + 1);
+				points[2] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty + 1);
+				points[3] = RasterUtils::RasterCoordToWorldCoord(gt, tx + 1, ty);
+
+				if (wrap_geom.Intersects(points)) {
+					stats.Update(v);
+				}
+			};
+			DataCube::Apply(stats_func, data_cube, 0);
+
+			// Set the result.
+			result.SetValue(i, stats.ToValue());
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Calculates statistics for a specific band (0-based index) of a raster.
+
+		The returned value is a `STRUCT` with the following fields:
+
+		| Field | Type | Description |
+		| ----- | ---- | ----------- |
+		| `minimum` | DOUBLE | Minimum pixel value among valid (non-nodata) cells. |
+		| `maximum` | DOUBLE | Maximum pixel value among valid (non-nodata) cells. |
+		| `sum` | DOUBLE | Sum of all valid pixel values. |
+		| `mean` | DOUBLE | Mean (average) of all valid pixel values. |
+		| `stddev` | DOUBLE | Population standard deviation of all valid pixel values. |
+		| `valid_count` | BIGINT | Number of valid (non-nodata) cells. |
+		| `nodata_count` | BIGINT | Number of nodata cells. |
+
+		Function accepts two different forms with the following parameters.
+
+		Just to compute statistics for a specific band of a raster:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `filepath` | VARCHAR | The file path of the raster to compute statistics for. |
+		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+
+		To compute statistics for a specific band of a raster, but only for those valid (non-nodata)
+		cells that fall within a geometry (Zonal statistics):
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `filepath` | VARCHAR | The file path of the raster to compute statistics for. |
+		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+		| `geometry` | GEOMETRY | The geometry to use for spatial filtering. |
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT RT_Stats('some/file/path/filename.tif'), 0);
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "scalar");
+
+		ScalarFunctionSet function_set("RT_Stats");
+
+		ScalarFunction function_01 =
+		    ScalarFunction({LogicalType::VARCHAR, LogicalType::INTEGER}, RasterTypes::STATS(), Execute);
+
+		function_01.SetVolatile();
+		function_set.AddFunction(function_01);
+
+		ScalarFunction function_02 =
+		    ScalarFunction({LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::GEOMETRY()}, RasterTypes::STATS(),
+		                   ExecuteGeom, nullptr, nullptr, nullptr, InitLocal);
+
+		function_02.SetVolatile();
+		function_set.AddFunction(function_02);
+
+		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
+		                                    EXAMPLE, tags);
+	}
+};
+
 } // namespace
 
 // #####################################################################################################################
@@ -647,6 +939,7 @@ void RasterStatsFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
 	RT_Stats::Register(loader);
 	RT_Stats_Agg::Register(loader);
+	RT_RasterStats::Register(loader);
 }
 
 } // namespace duckdb

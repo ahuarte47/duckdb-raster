@@ -16,12 +16,14 @@
 
 | Function | Summary |
 | --- | --- |
+| [`RT_Metadata`](#rt_metadata) | Retrieves the metadata of a raster file, returning it as a JSON string. |
 | [`RT_Array2Cube`](#rt_array2cube) | Packages a plain SQL array into a datacube column. |
 | [`RT_Cube2Array`](#rt_cube2array) | Extracts pixel values from a datacube column into a plain SQL array. |
 | [`RT_Cube2Type`](#rt_cube2type) | Changes the pixel data type of a datacube. |
 | [`RT_Cube<UnaryOp>`](#rt_cubeunaryop) | Applies a unary operation to the datacube element-wise (`RT_CubeNeg`, `RT_CubeAbs`, …). |
 | [`RT_Cube<BinaryOp>`](#rt_cubebinaryop) | Applies a binary operation between two datacubes or a datacube and a scalar. Operators `+`, `-`, `*`, `/`, `^`, `%` are also supported. |
 | [`RT_CubeStats`](#rt_cubestats) | Calculates statistics for a specific band (0-based index) of a datacube. |
+| [`RT_Stats`](#rt_stats) | Calculates statistics for a specific band (0-based index) of a raster, optionally within a geometry. |
 | [`RT_GdalConfig`](#rt_gdalconfig) | Sets a GDAL configuration option (equivalent to CPLSetConfigOption). |
 
 **[Spatial Functions](#spatial-functions)**
@@ -472,6 +474,28 @@ WITH (
 
 ## Scalar Functions
 
+### RT_Metadata
+
+Retrieves the metadata of a raster file, returning it as a JSON string.
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `filepath` | VARCHAR | The path to the raster file whose metadata will be retrieved. |
+
+#### Signature
+
+```sql
+RT_Metadata (filepath VARCHAR)
+```
+
+#### Examples
+
+```sql
+SELECT RT_Metadata('path/to/raster/file.tif');
+```
+
+----
+
 ### RT_Array2Cube
 
 Packages a plain SQL array of numeric values back into a datacube BLOB, the inverse of `RT_Cube2Array`.
@@ -806,6 +830,57 @@ FROM (
     SELECT RT_CubeStats(databand_1, 0) AS stats
     FROM RT_Read('path/to/raster/file.tif')
 );
+```
+
+----
+
+### RT_Stats
+
+Calculates statistics for a specific band (0-based index) of a raster, optionally within a geometry.
+
+The returned value is a `STRUCT` with the following fields:
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `minimum` | DOUBLE | Minimum pixel value among valid (non-nodata) cells. |
+| `maximum` | DOUBLE | Maximum pixel value among valid (non-nodata) cells. |
+| `sum` | DOUBLE | Sum of all valid pixel values. |
+| `mean` | DOUBLE | Mean (average) of all valid pixel values. |
+| `stddev` | DOUBLE | Population standard deviation of all valid pixel values. |
+| `valid_count` | BIGINT | Number of valid (non-nodata) cells. |
+| `nodata_count` | BIGINT | Number of nodata cells. |
+
+Function accepts two different forms with the following parameters.
+
+Just to compute statistics for a specific band of a raster:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `filepath` | VARCHAR | The raster file path to compute statistics for. |
+| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+
+To compute statistics for a specific band of a datacube, but only for those valid (non-nodata)
+cells that fall within a geometry (Zonal statistics):
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| `filepath` | VARCHAR | The raster file path to compute statistics for. |
+| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+| `geometry` | GEOMETRY | The geometry to use for spatial filtering. |
+
+#### Signature
+
+```sql
+RT_Stats (filepath VARCHAR, band INTEGER)
+RT_Stats (filepath VARCHAR, band INTEGER, geometry GEOMETRY)
+```
+
+#### Examples
+
+```sql
+SELECT
+    RT_Stats('path/to/raster/file.tif', 0)
+;
 ```
 
 ----

@@ -7,6 +7,8 @@
 #include "duckdb.hpp"
 #include "duckdb/catalog/catalog_entry/function_entry.hpp"
 #include "duckdb/function/scalar_function.hpp"
+// GDAL
+#include "modules/gdal_dataset_io.hpp"
 
 namespace duckdb {
 
@@ -100,6 +102,77 @@ struct RT_ChangeType {
 	}
 };
 
+//======================================================================================================================
+// RT_Metadata
+//======================================================================================================================
+
+struct RT_Metadata {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Retrieve the metadata of a raster.
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 1);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		auto &client_context = state.GetContext();
+		GDALDatasetUniquePtr dataset;
+		std::string dataset_path;
+
+		for (idx_t i = 0; i < count; i++) {
+			const std::string file_path = args.data[0].GetValue(i).GetValue<string>();
+
+			// Open the dataset if the file path has changed.
+
+			if (dataset_path != file_path) {
+				dataset = GDALDatasetUniquePtr(DuckDBDatasetFactory::OpenDataset(client_context, {file_path}, {}));
+				dataset_path = file_path;
+			}
+
+			// Extract the metadata from the dataset.
+
+			std::string metadata = RasterUtils::GetMetadataOfDataset(dataset.get());
+			result.SetValue(i, metadata);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Retrieves the metadata of a raster file, returning it as a JSON string.
+
+		Function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| `filepath` | VARCHAR | The path to the raster file whose metadata will be retrieved. |
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT RT_Metadata('some/file/path/filename.tif');
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "scalar");
+
+		ScalarFunction function("RT_Metadata", {LogicalType::VARCHAR}, LogicalType::JSON(), Execute);
+		function.SetVolatile();
+
+		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
+		                                 tags);
+	}
+};
+
 } // namespace
 
 // #####################################################################################################################
@@ -109,6 +182,7 @@ struct RT_ChangeType {
 void RasterFormatFunctions::Register(ExtensionLoader &loader) {
 	// Register functions
 	RT_ChangeType::Register(loader);
+	RT_Metadata::Register(loader);
 }
 
 } // namespace duckdb
