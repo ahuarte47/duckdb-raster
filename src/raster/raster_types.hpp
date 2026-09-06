@@ -82,6 +82,9 @@ struct RasterBounds {
 	    : min_col(NumericLimits<int32_t>::Maximum()), max_col(NumericLimits<int32_t>::Minimum()),
 	      min_row(NumericLimits<int32_t>::Maximum()), max_row(NumericLimits<int32_t>::Minimum()) {
 	}
+	RasterBounds(int32_t min_col, int32_t max_col, int32_t min_row, int32_t max_row)
+	    : min_col(min_col), max_col(max_col), min_row(min_row), max_row(max_row) {
+	}
 
 	//! Expand the bounding box to include the given column and row.
 	void Grow(int32_t col, int32_t row) {

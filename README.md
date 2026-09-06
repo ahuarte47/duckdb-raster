@@ -51,6 +51,7 @@ LOAD raster;
 | [`RT_Cube<UnaryOp>`](docs/functions.md#rt_cubeunaryop) | Applies a unary operation to the datacube element-wise (`RT_CubeNeg`, `RT_CubeAbs`, …). |
 | [`RT_Cube<BinaryOp>`](docs/functions.md#rt_cubebinaryop) | Applies a binary operation between two datacubes or a datacube and a scalar. Operators `+`, `-`, `*`, `/`, `^`, `%` are also supported. |
 | [`RT_CubeStats`](docs/functions.md#rt_cubestats) | Calculates statistics for a specific band (0-based index) of a datacube. |
+| [`RT_Stats`](docs/functions.md#rt_stats) | Calculates statistics for a specific band (0-based index) of a raster, optionally within a geometry. |
 | [`RT_GdalConfig`](docs/functions.md#rt_gdalconfig) | Sets a GDAL configuration option (e.g. for S3 authentication). |
 
 **[Spatial Functions](docs/functions.md#spatial-functions)**
