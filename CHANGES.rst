@@ -1,6 +1,12 @@
 Release history
 ---------------
 
+1.6.1
+++++++++++++++++++
+
+- Functions `RT_RasterValue` and `RT_RasterValues` accept multiple raster file paths as input.
+- Functions `RT_CoordValue` and `RT_CoordValues` accept multiple raster file paths as input.
+
 1.6.0
 ++++++++++++++++++
 

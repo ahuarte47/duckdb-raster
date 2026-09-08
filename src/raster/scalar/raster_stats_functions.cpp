@@ -23,6 +23,49 @@ namespace {
 // Utilities
 //======================================================================================================================
 
+//! Extracts file paths from a Value, which can be either a VARCHAR or a LIST of VARCHARs.
+static std::vector<std::string> ExtractFilePaths(const Value &in_value) {
+	std::vector<std::string> file_names;
+
+	if (in_value.IsNull()) {
+		throw InvalidInputException("Cannot extract file paths from a NULL value");
+	}
+	if (in_value.type().id() == LogicalTypeId::LIST) {
+		const auto &children = ListValue::GetChildren(in_value);
+		file_names.reserve(children.size());
+
+		for (const auto &child : children) {
+			if (child.type().id() != LogicalTypeId::VARCHAR) {
+				throw InvalidInputException("Expected a VARCHAR value, but got " + child.type().ToString());
+			}
+			file_names.push_back(child.GetValue<std::string>());
+		}
+	} else {
+		if (in_value.type().id() != LogicalTypeId::VARCHAR) {
+			throw InvalidInputException("Expected a VARCHAR value, but got " + in_value.type().ToString());
+		}
+		file_names.push_back(in_value.GetValue<std::string>());
+	}
+	if (file_names.empty()) {
+		throw InvalidInputException("No file paths provided");
+	}
+	return file_names;
+}
+
+//! Concatenates a vector of file paths into a single semicolon-separated string.
+static std::string ConcatFilePaths(const std::vector<std::string> &file_names) {
+	std::string result;
+
+	for (size_t i = 0; i < file_names.size(); i++) {
+		result += file_names[i];
+
+		if (i < file_names.size() - 1) {
+			result += ";";
+		}
+	}
+	return result;
+}
+
 //! Load the data of a specific band from a GDAL dataset into a DataCube.
 static RasterBounds LoadDataCubeBand(GDALDataset *dataset, const int32_t band_index, const GeometryExtent &bounds,
                                      DataCube &data_cube) {
@@ -743,7 +786,8 @@ struct RT_RasterStats {
 
 		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 		for (idx_t i = 0; i < count; i++) {
-			const std::string file_path = args.data[0].GetValue(i).GetValue<string>();
+			const std::vector<std::string> file_paths = ExtractFilePaths(args.data[0].GetValue(i));
+			const std::string input_path = ConcatFilePaths(file_paths);
 
 			// Validate the input parameters.
 
@@ -754,9 +798,9 @@ struct RT_RasterStats {
 
 			// Open the dataset if the file path has changed.
 
-			if (dataset_path != file_path) {
-				dataset = GDALDatasetUniquePtr(DuckDBDatasetFactory::OpenDataset(client_context, {file_path}, {}));
-				dataset_path = file_path;
+			if (dataset_path != input_path) {
+				dataset = GDALDatasetUniquePtr(DuckDBDatasetFactory::OpenDataset(client_context, file_paths, {}));
+				dataset_path = input_path;
 			}
 
 			if (band_index >= dataset->GetRasterCount()) {
@@ -796,7 +840,8 @@ struct RT_RasterStats {
 
 		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
 		for (idx_t i = 0; i < count; i++) {
-			const std::string file_path = args.data[0].GetValue(i).GetValue<string>();
+			const std::vector<std::string> file_paths = ExtractFilePaths(args.data[0].GetValue(i));
+			const std::string input_path = ConcatFilePaths(file_paths);
 
 			// Validate the input parameters.
 
@@ -807,9 +852,9 @@ struct RT_RasterStats {
 
 			// Open the dataset if the file path has changed.
 
-			if (dataset_path != file_path) {
-				dataset = GDALDatasetUniquePtr(DuckDBDatasetFactory::OpenDataset(client_context, {file_path}, {}));
-				dataset_path = file_path;
+			if (dataset_path != input_path) {
+				dataset = GDALDatasetUniquePtr(DuckDBDatasetFactory::OpenDataset(client_context, file_paths, {}));
+				dataset_path = input_path;
 			}
 
 			if (band_index >= dataset->GetRasterCount()) {
@@ -883,7 +928,7 @@ struct RT_RasterStats {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| `filepath` | VARCHAR | The file path of the raster to compute statistics for. |
+		| [`filepath`, `filepaths`] | [VARCHAR, VARCHAR[]] | The file path[s] of the raster[s] to compute statistics for. |
 		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 
 		To compute statistics for a specific band of a raster, but only for those valid (non-nodata)
@@ -891,13 +936,14 @@ struct RT_RasterStats {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| `filepath` | VARCHAR | The file path of the raster to compute statistics for. |
+		| [`filepath`, `filepaths`] | [VARCHAR, VARCHAR[]] | The file path[s] of the raster[s] to compute statistics for. |
 		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 		| `geometry` | GEOMETRY | The geometry to use for spatial filtering. |
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		SELECT RT_Stats('some/file/path/filename.tif'), 0);
+		SELECT RT_Stats('some/file/path/filename.tif', 0);
+		SELECT RT_Stats(['some/file/path/filename_1.tif', 'some/file/path/filename_2.tif'], 0);
 	)";
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -917,12 +963,25 @@ struct RT_RasterStats {
 		function_01.SetVolatile();
 		function_set.AddFunction(function_01);
 
-		ScalarFunction function_02 =
-		    ScalarFunction({LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::GEOMETRY()}, RasterTypes::STATS(),
-		                   ExecuteGeom, nullptr, nullptr, nullptr, InitLocal);
+		ScalarFunction function_02 = ScalarFunction({LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER},
+		                                            RasterTypes::STATS(), Execute);
 
 		function_02.SetVolatile();
 		function_set.AddFunction(function_02);
+
+		ScalarFunction function_03 =
+		    ScalarFunction({LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::GEOMETRY()}, RasterTypes::STATS(),
+		                   ExecuteGeom, nullptr, nullptr, nullptr, InitLocal);
+
+		function_03.SetVolatile();
+		function_set.AddFunction(function_03);
+
+		ScalarFunction function_04 =
+		    ScalarFunction({LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER, LogicalType::GEOMETRY()},
+		                   RasterTypes::STATS(), ExecuteGeom, nullptr, nullptr, nullptr, InitLocal);
+
+		function_04.SetVolatile();
+		function_set.AddFunction(function_04);
 
 		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
 		                                    EXAMPLE, tags);

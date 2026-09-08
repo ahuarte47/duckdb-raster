@@ -4,7 +4,7 @@
 duckdb_extension_load(raster
     SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}
     LOAD_TESTS
-    EXTENSION_VERSION 1.6.0
+    EXTENSION_VERSION 1.6.1
 )
 
 # Any extra extensions that should be built
