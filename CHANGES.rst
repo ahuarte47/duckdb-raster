@@ -4,6 +4,7 @@ Release history
 1.6.1
 ++++++++++++++++++
 
+- Function `RT_ReadCells` accepts a bounding box (`x_min`, `y_min`, `x_max`, `y_max` parameters) as an optional parameter to prefilter the raster cells.
 - Functions `RT_RasterValue` and `RT_RasterValues` accept multiple raster file paths as input.
 - Functions `RT_CoordValue` and `RT_CoordValues` accept multiple raster file paths as input.
 

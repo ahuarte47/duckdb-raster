@@ -12,6 +12,7 @@
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
 #include "duckdb/common/typedefs.hpp"
+#include "duckdb/common/types/geometry.hpp"
 #include "duckdb/common/types/uuid.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/parsed_data/create_copy_function_info.hpp"
@@ -105,6 +106,7 @@ struct RT_Read {
 		DataFormat::Value data_format = DataFormat::Value::RAW;
 		bool skip_empty_tiles = true;
 		IGNORE_CELLS ignore_cells = IGNORE_CELLS::NEVER;
+		GeometryExtent prefilter_box = GeometryExtent::Empty();
 		bool make_datacube = false;
 
 		GDALDatasetUniquePtr dataset;
@@ -1199,6 +1201,23 @@ struct RT_ReadCells {
 			return_types.emplace_back(RasterUtils::GdalTypeToLogicalType(raster_type));
 		}
 
+		// Prefilter bounding box.
+
+		GeometryExtent prefilter_box = GeometryExtent::Empty();
+
+		if (params.find("x_min") != params.end() && params.find("y_min") != params.end() &&
+		    params.find("x_max") != params.end() && params.find("y_max") != params.end()) {
+			double x_min = params.at("x_min").GetValue<double>();
+			double y_min = params.at("y_min").GetValue<double>();
+			double x_max = params.at("x_max").GetValue<double>();
+			double y_max = params.at("y_max").GetValue<double>();
+			prefilter_box.Extend(VertexXY {x_min, y_min});
+			prefilter_box.Extend(VertexXY {x_max, y_max});
+
+			RASTER_SCAN_DEBUG_LOG(1, "Prefilter bounding box: (x_min=%f, y_min=%f, x_max=%f, y_max=%f)", x_min, y_min,
+			                      x_max, y_max);
+		}
+
 		// Return the bind data.
 
 		auto result = make_uniq<RT_Read::BindData>();
@@ -1207,6 +1226,7 @@ struct RT_ReadCells {
 		result->data_format = DataFormat::RAW;
 		result->skip_empty_tiles = true;
 		result->ignore_cells = ignore_cells;
+		result->prefilter_box = prefilter_box;
 		result->make_datacube = false;
 		result->dataset = std::move(dataset);
 		result->child_datasets = std::move(child_datasets);
@@ -1303,6 +1323,7 @@ struct RT_ReadCells {
 		GDALDataset *dataset = bind_data.dataset.get();
 
 		const auto &gt = bind_data.geo_transform;
+		const GeometryExtent &prefilter_box = bind_data.prefilter_box;
 		const int32_t raster_size_x = bind_data.raster_size_x;
 		const int32_t raster_size_y = bind_data.raster_size_y;
 		const int32_t block_size_x = bind_data.block_size_x;
@@ -1334,6 +1355,18 @@ struct RT_ReadCells {
 
 			if (!(cov & GDAL_DATA_COVERAGE_STATUS_UNIMPLEMENTED) && !(cov & GDAL_DATA_COVERAGE_STATUS_DATA)) {
 				RASTER_SCAN_DEBUG_LOG(3, " > txy=(%d, %d): empty sparse tile, skipped", tile_x, tile_y);
+				result.processed += count;
+				return result;
+			}
+		}
+
+		// Prefilter the tile if a prefilter bounding box was defined.
+		if (prefilter_box.HasXY()) {
+			const GeometryExtent tile_extent =
+			    RasterUtils::RasterRectToWorldRect(gt, offset_x, offset_y, offset_x + size_x, offset_y + size_y);
+
+			if (!tile_extent.IntersectsXY(prefilter_box)) {
+				RASTER_SCAN_DEBUG_LOG(3, " > txy=(%d, %d): tile outside prefilter box, skipped", tile_x, tile_y);
 				result.processed += count;
 				return result;
 			}
@@ -1379,6 +1412,18 @@ struct RT_ReadCells {
 			const Point2D pt0 = RasterUtils::RasterCoordToWorldCoord(gt, offset_x + cell_x, offset_y + cell_y);
 			const Point2D pt2 = RasterUtils::RasterCoordToWorldCoord(gt, offset_x + cell_x + 1, offset_y + cell_y + 1);
 			const Point2D ptc = Point2D(pt0.x + 0.5 * (pt2.x - pt0.x), pt0.y + 0.5 * (pt2.y - pt0.y));
+
+			if (prefilter_box.HasXY()) {
+				GeometryExtent env = GeometryExtent::Empty();
+				env.Extend(VertexXY {pt0.x, pt0.y});
+				env.Extend(VertexXY {pt2.x, pt2.y});
+
+				if (!prefilter_box.IntersectsXY(env)) {
+					result.processed++;
+					continue;
+				}
+			}
+
 			const std::string geometry_wkt = StringUtil::Format("POINT (%f %f)", ptc.x, ptc.y);
 
 			const CellRow cell_row {Value::BIGINT(row_id + i),
@@ -1609,6 +1654,10 @@ struct RT_ReadCells {
 		| `warp_options` | VARCHAR[] | An optional list of warp options passed to reproject or warp the raster. It accepts the same options as the GDAL `Warp` tool (https://gdal.org/en/stable/programs/gdalwarp.html). |
 		| `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
 		| `ignore_nodata` | INTEGER | An optional parameter to ignore cells with nodata values. It accepts the following values: `0` (default) to never ignore cells, `1` to ignore cells with at least one band having a nodata value, and `2` to ignore cells with all bands having nodata values. |
+		| `x_min` | DOUBLE | An optional parameter specifying the minimum x coordinate of the bounding box for spatial pre-filtering. |
+		| `y_min` | DOUBLE | An optional parameter specifying the minimum y coordinate of the bounding box for spatial pre-filtering. |
+		| `x_max` | DOUBLE | An optional parameter specifying the maximum x coordinate of the bounding box for spatial pre-filtering. |
+		| `y_max` | DOUBLE | An optional parameter specifying the maximum y coordinate of the bounding box for spatial pre-filtering. |
 
 		This is the list of columns returned by `RT_ReadCells`:
 
@@ -1655,6 +1704,12 @@ struct RT_ReadCells {
 		for (auto *func : {&func_01, &func_02}) {
 			func->cardinality = RT_Read::Cardinality;
 			func->table_scan_progress = RT_Read::Progress;
+
+			// Bounding box (BBOX) for spatial pre-filtering
+			func->named_parameters["x_min"] = LogicalType::DOUBLE;
+			func->named_parameters["y_min"] = LogicalType::DOUBLE;
+			func->named_parameters["x_max"] = LogicalType::DOUBLE;
+			func->named_parameters["y_max"] = LogicalType::DOUBLE;
 
 			// Common warp optional parameters
 			func->named_parameters["warp_options"] = LogicalType::LIST(LogicalType::VARCHAR);

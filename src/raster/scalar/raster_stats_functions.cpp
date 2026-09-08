@@ -87,29 +87,17 @@ static RasterBounds LoadDataCubeBand(GDALDataset *dataset, const int32_t band_in
 
 	// Calculate the offset and size of the region of interest within the raster.
 	if (bounds.HasXY()) {
-		double x_min = bounds.x_min;
-		double y_min = bounds.y_min;
-		double x_max = bounds.x_max;
-		double y_max = bounds.y_max;
-
 		double gt[6] = {0};
 		if (dataset->GetGeoTransform(gt) != CE_None) {
 			gt[1] = 1.0;
 			gt[5] = -1.0;
 		}
 
-		RasterCoord pt0 = RasterUtils::WorldCoordToRasterCoord(gt, x_min, y_min);
-		RasterCoord pt1 = RasterUtils::WorldCoordToRasterCoord(gt, x_max, y_min);
-		RasterCoord pt2 = RasterUtils::WorldCoordToRasterCoord(gt, x_max, y_max);
-		RasterCoord pt3 = RasterUtils::WorldCoordToRasterCoord(gt, x_min, y_max);
-
-		// Compute the bounding window of the region of interest.
-		offset_x = MaxValue(0, MinValue(MinValue(pt0.col, pt1.col), MinValue(pt2.col, pt3.col)));
-		offset_y = MaxValue(0, MinValue(MinValue(pt0.row, pt1.row), MinValue(pt2.row, pt3.row)));
-		const int32_t max_col = MaxValue(MaxValue(pt0.col, pt1.col), MaxValue(pt2.col, pt3.col));
-		const int32_t max_row = MaxValue(MaxValue(pt0.row, pt1.row), MaxValue(pt2.row, pt3.row));
-		size_x = MaxValue(0, MinValue(raster_size_x, max_col + 1) - offset_x);
-		size_y = MaxValue(0, MinValue(raster_size_y, max_row + 1) - offset_y);
+		RasterBounds window = RasterUtils::WorldRectToRasterRect(gt, raster_size_x, raster_size_y, bounds);
+		offset_x = window.min_col;
+		offset_y = window.min_row;
+		size_x = window.max_col - window.min_col;
+		size_y = window.max_row - window.min_row;
 	}
 
 	// Prepare the data cube where the raster band data will be stored.
@@ -807,7 +795,7 @@ struct RT_RasterStats {
 				throw InvalidInputException("Band index out of range");
 			}
 
-			LoadDataCubeBand(dataset.get(), band_index, GeometryExtent::Unknown(), data_cube);
+			LoadDataCubeBand(dataset.get(), band_index, GeometryExtent::Empty(), data_cube);
 
 			// Compute statistics for the specified band.
 

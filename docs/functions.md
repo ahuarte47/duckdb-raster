@@ -230,6 +230,10 @@ The `RT_ReadCells` function accepts parameters, most of them optional:
 | `warp_options` | VARCHAR[] | An optional list of warp options passed to reproject or warp the raster. It accepts the same options as the GDAL `Warp` tool (https://gdal.org/en/stable/programs/gdalwarp.html). |
 | `separate_bands` | BOOLEAN | `true` means that each input goes into a separate band in the VRT dataset. Otherwise, the files are considered as source rasters of a larger mosaic and the VRT file has the same number of bands as the input files. Only for multi-file version of the function. `false` is the default. |
 | `ignore_nodata` | INTEGER | An optional parameter to ignore cells with nodata values. It accepts the following values: `0` (default) to never ignore cells, `1` to ignore cells with at least one band having a nodata value, and `2` to ignore cells with all bands having nodata values. |
+| `x_min` | DOUBLE | An optional parameter specifying the minimum x coordinate of the bounding box for spatial pre-filtering. |
+| `y_min` | DOUBLE | An optional parameter specifying the minimum y coordinate of the bounding box for spatial pre-filtering. |
+| `x_max` | DOUBLE | An optional parameter specifying the maximum x coordinate of the bounding box for spatial pre-filtering. |
+| `y_max` | DOUBLE | An optional parameter specifying the maximum y coordinate of the bounding box for spatial pre-filtering. |
 
 This is the list of columns returned by `RT_ReadCells`:
 

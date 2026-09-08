@@ -52,6 +52,51 @@ RasterCoord RasterUtils::WorldCoordToRasterCoord(const double (&matrix)[6], cons
 	return WorldCoordToRasterCoord(matrix, coord.x, coord.y);
 }
 
+GeometryExtent RasterUtils::RasterRectToWorldRect(const double (&matrix)[6], int32_t min_col, int32_t min_row,
+                                                  int32_t max_col, int32_t max_row) {
+	const Point2D pt0 = RasterCoordToWorldCoord(matrix, min_col, min_row);
+	const Point2D pt1 = RasterCoordToWorldCoord(matrix, max_col, min_row);
+	const Point2D pt2 = RasterCoordToWorldCoord(matrix, max_col, max_row);
+	const Point2D pt3 = RasterCoordToWorldCoord(matrix, min_col, max_row);
+
+	const double x_min = MinValue<double>(MinValue<double>(pt0.x, pt1.x), MinValue<double>(pt2.x, pt3.x));
+	const double y_min = MinValue<double>(MinValue<double>(pt0.y, pt1.y), MinValue<double>(pt2.y, pt3.y));
+	const double x_max = MaxValue<double>(MaxValue<double>(pt0.x, pt1.x), MaxValue<double>(pt2.x, pt3.x));
+	const double y_max = MaxValue<double>(MaxValue<double>(pt0.y, pt1.y), MaxValue<double>(pt2.y, pt3.y));
+
+	return GeometryExtent {x_min, y_min, 0.0, 0.0, x_max, y_max, 0.0, 0.0};
+}
+
+GeometryExtent RasterUtils::RasterRectToWorldRect(const double (&matrix)[6], const RasterBounds &bounds) {
+	return RasterRectToWorldRect(matrix, bounds.min_col, bounds.min_row, bounds.max_col, bounds.max_row);
+}
+
+RasterBounds RasterUtils::WorldRectToRasterRect(const double (&matrix)[6], int raster_size_x, int raster_size_y,
+                                                double x_min, double y_min, double x_max, double y_max) {
+	const RasterCoord pt0 = WorldCoordToRasterCoord(matrix, x_min, y_min);
+	const RasterCoord pt1 = WorldCoordToRasterCoord(matrix, x_max, y_min);
+	const RasterCoord pt2 = WorldCoordToRasterCoord(matrix, x_max, y_max);
+	const RasterCoord pt3 = WorldCoordToRasterCoord(matrix, x_min, y_max);
+
+	const int32_t min_col = MinValue<int32_t>(MinValue<int32_t>(pt0.col, pt1.col), MinValue<int32_t>(pt2.col, pt3.col));
+	const int32_t min_row = MinValue<int32_t>(MinValue<int32_t>(pt0.row, pt1.row), MinValue<int32_t>(pt2.row, pt3.row));
+	const int32_t max_col = MaxValue<int32_t>(MaxValue<int32_t>(pt0.col, pt1.col), MaxValue<int32_t>(pt2.col, pt3.col));
+	const int32_t max_row = MaxValue<int32_t>(MaxValue<int32_t>(pt0.row, pt1.row), MaxValue<int32_t>(pt2.row, pt3.row));
+
+	const int32_t offset_x = MaxValue<int32_t>(0, min_col);
+	const int32_t offset_y = MaxValue<int32_t>(0, min_row);
+	const int32_t size_x = MaxValue<int32_t>(0, MinValue<int32_t>(raster_size_x, max_col + 1) - offset_x);
+	const int32_t size_y = MaxValue<int32_t>(0, MinValue<int32_t>(raster_size_y, max_row + 1) - offset_y);
+
+	return RasterBounds {offset_x, offset_x + size_x, offset_y, offset_y + size_y};
+}
+
+RasterBounds RasterUtils::WorldRectToRasterRect(const double (&matrix)[6], int raster_size_x, int raster_size_y,
+                                                const GeometryExtent &bounds) {
+	return WorldRectToRasterRect(matrix, raster_size_x, raster_size_y, bounds.x_min, bounds.y_min, bounds.x_max,
+	                             bounds.y_max);
+}
+
 int RasterUtils::GetSrid(const char *proj_def) {
 	int srid = 0; // SRID_UNKNOWN
 

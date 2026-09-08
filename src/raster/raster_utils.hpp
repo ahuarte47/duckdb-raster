@@ -7,6 +7,7 @@
 
 // DuckDB
 #include "duckdb/common/types.hpp"
+#include "duckdb/common/types/geometry.hpp"
 // GDAL
 #include "gdal_priv.h"
 
@@ -48,6 +49,19 @@ public:
 	static RasterCoord WorldCoordToRasterCoord(const double (&matrix)[6], const double &x, const double &y);
 	//! Convert geographic world coordinate to raster raster coordinate.
 	static RasterCoord WorldCoordToRasterCoord(const double (&matrix)[6], const Point2D &coord);
+
+	//! Convert a raster coordinate window to a geographic world coordinate extent.
+	static GeometryExtent RasterRectToWorldRect(const double (&matrix)[6], int32_t min_col, int32_t min_row,
+	                                            int32_t max_col, int32_t max_row);
+	//! Convert a raster coordinate window to a geographic world coordinate extent.
+	static GeometryExtent RasterRectToWorldRect(const double (&matrix)[6], const RasterBounds &bounds);
+
+	//! Convert a geographic world coordinate extent to a raster coordinate window.
+	static RasterBounds WorldRectToRasterRect(const double (&matrix)[6], int raster_size_x, int raster_size_y,
+	                                          double x_min, double y_min, double x_max, double y_max);
+	//! Convert a geographic world coordinate extent to a raster coordinate window.
+	static RasterBounds WorldRectToRasterRect(const double (&matrix)[6], int raster_size_x, int raster_size_y,
+	                                          const GeometryExtent &bounds);
 
 	//! Get the metadata of a GDAL dataset as a JSON string.
 	static std::string GetMetadataOfDataset(GDALDataset *dataset);
