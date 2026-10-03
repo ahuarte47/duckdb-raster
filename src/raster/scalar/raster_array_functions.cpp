@@ -27,6 +27,11 @@ struct RT_Array2Cube {
 		const idx_t count = args.size();
 		args.Flatten();
 
+		// Set the result vector type to constant if there is only one input row.
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 
 		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
@@ -145,6 +150,11 @@ struct RT_Cube2Array {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 		args.Flatten();
+
+		// Set the result vector type to constant if there is only one input row.
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 

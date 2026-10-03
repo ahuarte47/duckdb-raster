@@ -27,6 +27,11 @@ struct RT_NullOrEmpty {
 		const idx_t count = args.size();
 		args.Flatten();
 
+		// Set the result vector type to constant if there is only one input row.
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 
 		for (idx_t i = 0; i < count; i++) {
@@ -81,6 +86,11 @@ struct RT_Math {
 		const idx_t count = args.size();
 		args.Flatten();
 
+		// Set the result vector type to constant if there is only one input row.
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
 
@@ -104,6 +114,11 @@ struct RT_Math {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 		args.Flatten();
+
+		// Set the result vector type to constant if there is only one input row.
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
 
 		DataCube arg_cube_a(Allocator::Get(state.GetContext()));
 		DataCube arg_cube_b(Allocator::Get(state.GetContext()));
@@ -143,6 +158,11 @@ struct RT_Math {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 		args.Flatten();
+
+		// Set the result vector type to constant if there is only one input row.
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
 
 		DataCube arg_cube(Allocator::Get(state.GetContext()));
 		DataCube res_cube(Allocator::Get(state.GetContext()));
