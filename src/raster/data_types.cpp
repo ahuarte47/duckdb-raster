@@ -164,7 +164,8 @@ bool CubeUnaryOp::Eval(CubeUnaryOp::Value op, const CubeCellValue &cell_value, d
 			throw std::runtime_error("Unsupported operation: " + std::to_string(static_cast<uint8_t>(op)));
 		}
 	}
-	return false;
+	result = cell_value.no_data;
+	return true;
 }
 
 bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const CubeCellValue &b, double &result) {
@@ -177,14 +178,15 @@ bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const Cu
 	// SET_NODATA is a special case: it sets the value of the cell to b and
 	// also updates the nodata sentinel to b.
 	if (op == CubeBinaryOp::Value::SET_NODATA) {
-		if (b.IsNoDataValue()) {
+		if (a.IsNoDataValue()) {
 			result = b.value;
 			return true;
+		} else {
+			result = a.value;
+			return true;
 		}
-		return false;
 	}
-	// OR is a special case: it selects the first non-nodata value between a and b, so it must
-	// run even when one or both inputs are nodata — before the general validity guard below.
+	// OR is a special case: it selects the first non-nodata value between a and b.
 	if (op == CubeBinaryOp::Value::OR) {
 		if (a.IsValidValue()) {
 			result = a.value;
@@ -194,7 +196,8 @@ bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const Cu
 			result = b.value;
 			return true;
 		}
-		return false;
+		result = a.no_data;
+		return true;
 	}
 	// For all other operations, both values must be valid.
 	if (a.IsValidValue() && b.IsValidValue()) {
@@ -255,7 +258,8 @@ bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const Cu
 			throw std::runtime_error("Unsupported operation: " + std::to_string(static_cast<uint8_t>(op)));
 		}
 	}
-	return false;
+	result = a.no_data;
+	return true;
 }
 
 } // namespace duckdb
