@@ -724,6 +724,8 @@ Returns a new datacube of the same dimensions. No-data cells are preserved unles
 | `RT_CubePow` (`^`) | Returns a datacube with each cell raised to the power of the right-hand value. |
 | `RT_CubeMod` (`%`) | Returns a datacube with each cell equal to the remainder of dividing the left-hand cell by the right-hand value. |
 
+Functions provided above support an optional `r_nodata` parameter to specify the result no-data value. This allows users to control how no-data cells are handled in the output datacube. This is useful when performing operations where the result of a cell is coincident with no-data cells in the input datacubes but should not be treated as no-data in the output, so users will want to set a different nodata value to distinguish it from the input no-data cells.
+
 **Comparison** (result cells are 1 if true, 0 if false)
 
 | Function | Description |
@@ -734,6 +736,8 @@ Returns a new datacube of the same dimensions. No-data cells are preserved unles
 | `RT_CubeLessEqual` | Returns a datacube where each cell is 1 if left <= right, 0 otherwise. |
 | `RT_CubeGreater` | Returns a datacube where each cell is 1 if left > right, 0 otherwise. |
 | `RT_CubeGreaterEqual` | Returns a datacube where each cell is 1 if left >= right, 0 otherwise. |
+
+Functions provided above support an optional `r_nodata` parameter to specify the result no-data value. This allows users to control how no-data cells are handled in the output datacube. This is useful when performing operations where the result of a cell is coincident with no-data cells in the input datacubes but should not be treated as no-data in the output, so users will want to set a different nodata value to distinguish it from the input no-data cells.
 
 **Assignment / Utility**
 
@@ -752,6 +756,7 @@ The math operators (`+`, `-`, `*`, `/`, `^`, `%`) are also supported as aliases 
 
 ```sql
 RT_Cube<funcname> (databand_a DATACUBE, value_b [DATACUBE, double])
+RT_Cube<funcname> (databand_a DATACUBE, value_b [DATACUBE, double], r_nodata DOUBLE)
 ```
 
 #### Examples

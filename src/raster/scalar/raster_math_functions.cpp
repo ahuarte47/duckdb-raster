@@ -110,7 +110,7 @@ struct RT_Math {
 	}
 
 	//! Execute a binary operation on two datacubes.
-	static void ExecuteBinaryOp1(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
+	static void ExecuteBinaryOp1a(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -153,8 +153,41 @@ struct RT_Math {
 		}
 	}
 
+	//! Execute a binary operation on two datacubes (redefining the nodata value in the result).
+	static void ExecuteBinaryOp1b(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 3);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		// Set the result vector type to constant if there is only one input row.
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+
+		DataCube arg_cube_a(Allocator::Get(state.GetContext()));
+		DataCube arg_cube_b(Allocator::Get(state.GetContext()));
+		DataCube tmp_cube_r(Allocator::Get(state.GetContext()));
+
+		const CubeBinaryCellFunc func = [op](const CubeCellValue &a, const CubeCellValue &b, double &result) {
+			return CubeBinaryOp::Eval(op, a, b, result);
+		};
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
+		for (idx_t i = 0; i < count; i++) {
+			Value blob_a = args.data[0].GetValue(i);
+			Value blob_b = args.data[1].GetValue(i);
+			const double r_nodata = args.data[2].GetValue(i).GetValue<double>();
+
+			arg_cube_a.LoadBlob(blob_a);
+			arg_cube_b.LoadBlob(blob_b);
+			DataCube::Apply(func, arg_cube_a, arg_cube_b, tmp_cube_r, r_nodata);
+
+			result.SetValue(i, tmp_cube_r.ToBlob());
+		}
+	}
+
 	//! Execute a binary operation on a datacube and a scalar value.
-	static void ExecuteBinaryOp2(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
+	static void ExecuteBinaryOp2a(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		const idx_t count = args.size();
 		args.Flatten();
@@ -188,6 +221,37 @@ struct RT_Math {
 				res_cube.SetHeader(new_header, false);
 				res_cube.GetBuffer().SetPosition(old_position);
 			}
+
+			result.SetValue(i, res_cube.ToBlob());
+		}
+	}
+
+	//! Execute a binary operation on a datacube and a scalar value (redefining the nodata value in the result).
+	static void ExecuteBinaryOp2b(CubeBinaryOp::Value op, DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 3);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		// Set the result vector type to constant if there is only one input row.
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+
+		DataCube arg_cube(Allocator::Get(state.GetContext()));
+		DataCube res_cube(Allocator::Get(state.GetContext()));
+
+		const CubeBinaryCellFunc func = [op](const CubeCellValue &a, const CubeCellValue &b, double &result) {
+			return CubeBinaryOp::Eval(op, a, b, result);
+		};
+
+		// We loop over rows manually because DuckDB Executors only support C++ primitive types.
+		for (idx_t i = 0; i < count; i++) {
+			Value blob = args.data[0].GetValue(i);
+			const double value_b = args.data[1].GetValue(i).GetValue<double>();
+			const double r_nodata = args.data[2].GetValue(i).GetValue<double>();
+
+			arg_cube.LoadBlob(blob);
+			DataCube::Apply(func, arg_cube, value_b, res_cube, r_nodata);
 
 			result.SetValue(i, res_cube.ToBlob());
 		}
@@ -318,21 +382,39 @@ struct RT_Math {
 
 			ScalarFunctionSet function_set(function_name);
 
-			const auto executor01 = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Math::ExecuteBinaryOp1(op, args, state, result);
+			const auto executor1a = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+				RT_Math::ExecuteBinaryOp1a(op, args, state, result);
 			};
-			ScalarFunction func01 = ScalarFunction(function_name, {RasterTypes::DATACUBE(), RasterTypes::DATACUBE()},
-			                                       RasterTypes::DATACUBE(), executor01);
+			ScalarFunction func1a = ScalarFunction(function_name, {RasterTypes::DATACUBE(), RasterTypes::DATACUBE()},
+			                                       RasterTypes::DATACUBE(), executor1a);
 
-			function_set.AddFunction(func01);
+			function_set.AddFunction(func1a);
 
-			const auto executor02 = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Math::ExecuteBinaryOp2(op, args, state, result);
+			const auto executor1b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+				RT_Math::ExecuteBinaryOp1b(op, args, state, result);
 			};
-			ScalarFunction func02 = ScalarFunction(function_name, {RasterTypes::DATACUBE(), LogicalType::DOUBLE},
-			                                       RasterTypes::DATACUBE(), executor02);
+			ScalarFunction func1b =
+			    ScalarFunction(function_name, {RasterTypes::DATACUBE(), RasterTypes::DATACUBE(), LogicalType::DOUBLE},
+			                   RasterTypes::DATACUBE(), executor1b);
 
-			function_set.AddFunction(func02);
+			function_set.AddFunction(func1b);
+
+			const auto executor2a = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+				RT_Math::ExecuteBinaryOp2a(op, args, state, result);
+			};
+			ScalarFunction func2a = ScalarFunction(function_name, {RasterTypes::DATACUBE(), LogicalType::DOUBLE},
+			                                       RasterTypes::DATACUBE(), executor2a);
+
+			function_set.AddFunction(func2a);
+
+			const auto executor2b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+				RT_Math::ExecuteBinaryOp2b(op, args, state, result);
+			};
+			ScalarFunction func2b =
+			    ScalarFunction(function_name, {RasterTypes::DATACUBE(), LogicalType::DOUBLE, LogicalType::DOUBLE},
+			                   RasterTypes::DATACUBE(), executor2b);
+
+			function_set.AddFunction(func2b);
 
 			RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, description,
 			                                    "", tags);
