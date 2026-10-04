@@ -295,90 +295,125 @@ struct RT_Math {
 		}
 
 		// Register binary operations
-		static constexpr std::array<std::tuple<const char *, CubeBinaryOp::Value, const char *>, 23> binary_ops = {{
-		    // Arithmetic
-		    {"RT_CubeAdd", CubeBinaryOp::ADD,
-		     "Returns a data cube with each cell equal to the sum of the corresponding cells of the two inputs. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"RT_CubeSubtract", CubeBinaryOp::SUBTRACT,
-		     "Returns a data cube with each cell equal to the left-hand cell minus the right-hand cell. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"RT_CubeMultiply", CubeBinaryOp::MULTIPLY,
-		     "Returns a data cube with each cell equal to the product of the corresponding cells of the two inputs. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"RT_CubeDivide", CubeBinaryOp::DIVIDE,
-		     "Returns a data cube with each cell equal to the left-hand cell divided by the right-hand cell. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"RT_CubePow", CubeBinaryOp::POW,
-		     "Returns a data cube with each cell raised to the power of the corresponding right-hand cell. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"RT_CubeMod", CubeBinaryOp::MOD,
-		     "Returns a data cube with each cell equal to the remainder of dividing the left-hand cell by the "
-		     "right-hand cell. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    // Comparison
-		    {"RT_CubeEqual", CubeBinaryOp::EQUAL,
-		     "Returns a data cube where each cell is 1 if the corresponding cells of the two inputs are equal, "
-		     "0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"RT_CubeNotEqual", CubeBinaryOp::NOT_EQUAL,
-		     "Returns a data cube where each cell is 1 if the corresponding cells of the two inputs differ, "
-		     "0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"RT_CubeLess", CubeBinaryOp::LESS,
-		     "Returns a data cube where each cell is 1 if the left-hand cell is strictly less than the right-hand "
-		     "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
-		     "preserved."},
-		    {"RT_CubeLessEqual", CubeBinaryOp::LESS_EQUAL,
-		     "Returns a data cube where each cell is 1 if the left-hand cell is less than or equal to the right-hand "
-		     "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
-		     "preserved."},
-		    {"RT_CubeGreater", CubeBinaryOp::GREATER,
-		     "Returns a data cube where each cell is 1 if the left-hand cell is strictly greater than the right-hand "
-		     "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
-		     "preserved."},
-		    {"RT_CubeGreaterEqual", CubeBinaryOp::GREATER_EQUAL,
-		     "Returns a data cube where each cell is 1 if the left-hand cell is greater than or equal to the "
-		     "right-hand "
-		     "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
-		     "preserved."},
-		    // Assignment / utility
-		    {"RT_CubeSet", CubeBinaryOp::SET,
-		     "Returns a data cube where valid cells are replaced by the corresponding values of a second data cube or "
-		     "scalar. No-data cells in the source are preserved."},
-		    {"RT_CubeSetNoData", CubeBinaryOp::SET_NODATA,
-		     "Returns a data cube where no-data cells are replaced by the specified value. Valid cells in the source "
-		     "are preserved."},
-		    {"RT_CubeFill", CubeBinaryOp::FILL,
-		     "Returns a data cube where all cells (including no-data) are unconditionally replaced by the "
-		     "corresponding values of a second data cube or scalar, bypassing no-data checks."},
-		    {"RT_CubeMin", CubeBinaryOp::MIN,
-		     "Returns a data cube with each cell equal to the minimum of the corresponding cells of the two inputs. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"RT_CubeMax", CubeBinaryOp::MAX,
-		     "Returns a data cube with each cell equal to the maximum of the corresponding cells of the two inputs. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    // Arithmetic operators
-		    {"+", CubeBinaryOp::ADD,
-		     "Returns a data cube with each cell equal to the sum of the corresponding cells of the two inputs. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"-", CubeBinaryOp::SUBTRACT,
-		     "Returns a data cube with each cell equal to the left-hand cell minus the right-hand cell. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"*", CubeBinaryOp::MULTIPLY,
-		     "Returns a data cube with each cell equal to the product of the corresponding cells of the two inputs. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"/", CubeBinaryOp::DIVIDE,
-		     "Returns a data cube with each cell equal to the left-hand cell divided by the right-hand cell. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"^", CubeBinaryOp::POW,
-		     "Returns a data cube with each cell raised to the power of the corresponding right-hand cell. "
-		     "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		    {"%", CubeBinaryOp::MOD,
-		     "Returns a data cube with each cell equal to the remainder of dividing the left-hand cell by the "
-		     "right-hand cell. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved."},
-		}};
+		static constexpr std::array<std::tuple<const char *, CubeBinaryOp::Value, const char *, bool>, 23> binary_ops =
+		    {{
+		        // Arithmetic
+		        {"RT_CubeAdd", CubeBinaryOp::ADD,
+		         "Returns a data cube with each cell equal to the sum of the corresponding cells of the two inputs. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         true},
+		        {"RT_CubeSubtract", CubeBinaryOp::SUBTRACT,
+		         "Returns a data cube with each cell equal to the left-hand cell minus the right-hand cell. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         true},
+		        {"RT_CubeMultiply", CubeBinaryOp::MULTIPLY,
+		         "Returns a data cube with each cell equal to the product of the corresponding cells of the two "
+		         "inputs. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         true},
+		        {"RT_CubeDivide", CubeBinaryOp::DIVIDE,
+		         "Returns a data cube with each cell equal to the left-hand cell divided by the right-hand cell. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         true},
+		        {"RT_CubePow", CubeBinaryOp::POW,
+		         "Returns a data cube with each cell raised to the power of the corresponding right-hand cell. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         true},
+		        {"RT_CubeMod", CubeBinaryOp::MOD,
+		         "Returns a data cube with each cell equal to the remainder of dividing the left-hand cell by the "
+		         "right-hand cell. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		         "preserved.",
+		         true},
+		        // Comparison
+		        {"RT_CubeEqual", CubeBinaryOp::EQUAL,
+		         "Returns a data cube where each cell is 1 if the corresponding cells of the two inputs are equal, "
+		         "0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         true},
+		        {"RT_CubeNotEqual", CubeBinaryOp::NOT_EQUAL,
+		         "Returns a data cube where each cell is 1 if the corresponding cells of the two inputs differ, "
+		         "0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         true},
+		        {"RT_CubeLess", CubeBinaryOp::LESS,
+		         "Returns a data cube where each cell is 1 if the left-hand cell is strictly less than the right-hand "
+		         "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		         "preserved.",
+		         true},
+		        {"RT_CubeLessEqual", CubeBinaryOp::LESS_EQUAL,
+		         "Returns a data cube where each cell is 1 if the left-hand cell is less than or equal to the "
+		         "right-hand "
+		         "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		         "preserved.",
+		         true},
+		        {"RT_CubeGreater", CubeBinaryOp::GREATER,
+		         "Returns a data cube where each cell is 1 if the left-hand cell is strictly greater than the "
+		         "right-hand "
+		         "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		         "preserved.",
+		         true},
+		        {"RT_CubeGreaterEqual", CubeBinaryOp::GREATER_EQUAL,
+		         "Returns a data cube where each cell is 1 if the left-hand cell is greater than or equal to the "
+		         "right-hand "
+		         "cell, 0 otherwise. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		         "preserved.",
+		         true},
+		        // Assignment / utility
+		        {"RT_CubeSet", CubeBinaryOp::SET,
+		         "Returns a data cube where valid cells are replaced by the corresponding values of a second data cube "
+		         "or "
+		         "scalar. No-data cells in the source are preserved.",
+		         true},
+		        {"RT_CubeSetNoData", CubeBinaryOp::SET_NODATA,
+		         "Returns a data cube where no-data cells are replaced by the specified value. Valid cells in the "
+		         "source "
+		         "are preserved.",
+		         true},
+		        {"RT_CubeFill", CubeBinaryOp::FILL,
+		         "Returns a data cube where all cells (including no-data) are unconditionally replaced by the "
+		         "corresponding values of a second data cube or scalar, bypassing no-data checks.",
+		         true},
+		        {"RT_CubeMin", CubeBinaryOp::MIN,
+		         "Returns a data cube with each cell equal to the minimum of the corresponding cells of the two "
+		         "inputs. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         true},
+		        {"RT_CubeMax", CubeBinaryOp::MAX,
+		         "Returns a data cube with each cell equal to the maximum of the corresponding cells of the two "
+		         "inputs. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         true},
+		        // Arithmetic operators
+		        {"+", CubeBinaryOp::ADD,
+		         "Returns a data cube with each cell equal to the sum of the corresponding cells of the two inputs. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         false},
+		        {"-", CubeBinaryOp::SUBTRACT,
+		         "Returns a data cube with each cell equal to the left-hand cell minus the right-hand cell. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         false},
+		        {"*", CubeBinaryOp::MULTIPLY,
+		         "Returns a data cube with each cell equal to the product of the corresponding cells of the two "
+		         "inputs. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         false},
+		        {"/", CubeBinaryOp::DIVIDE,
+		         "Returns a data cube with each cell equal to the left-hand cell divided by the right-hand cell. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         false},
+		        {"^", CubeBinaryOp::POW,
+		         "Returns a data cube with each cell raised to the power of the corresponding right-hand cell. "
+		         "Inputs can be two data cubes or a data cube and a scalar. No-data cells are preserved.",
+		         false},
+		        {"%", CubeBinaryOp::MOD,
+		         "Returns a data cube with each cell equal to the remainder of dividing the left-hand cell by the "
+		         "right-hand cell. Inputs can be two data cubes or a data cube and a scalar. No-data cells are "
+		         "preserved.",
+		         false},
+		    }};
 		for (const auto &entry : binary_ops) {
 			const auto &function_name = std::get<0>(entry);
 			const auto &op = std::get<1>(entry);
 			const auto &description = std::get<2>(entry);
+			const auto &override_function = std::get<3>(entry);
 
 			ScalarFunctionSet function_set(function_name);
 
@@ -390,15 +425,6 @@ struct RT_Math {
 
 			function_set.AddFunction(func1a);
 
-			const auto executor1b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Math::ExecuteBinaryOp1b(op, args, state, result);
-			};
-			ScalarFunction func1b =
-			    ScalarFunction(function_name, {RasterTypes::DATACUBE(), RasterTypes::DATACUBE(), LogicalType::DOUBLE},
-			                   RasterTypes::DATACUBE(), executor1b);
-
-			function_set.AddFunction(func1b);
-
 			const auto executor2a = [op](DataChunk &args, ExpressionState &state, Vector &result) {
 				RT_Math::ExecuteBinaryOp2a(op, args, state, result);
 			};
@@ -407,14 +433,26 @@ struct RT_Math {
 
 			function_set.AddFunction(func2a);
 
-			const auto executor2b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Math::ExecuteBinaryOp2b(op, args, state, result);
-			};
-			ScalarFunction func2b =
-			    ScalarFunction(function_name, {RasterTypes::DATACUBE(), LogicalType::DOUBLE, LogicalType::DOUBLE},
-			                   RasterTypes::DATACUBE(), executor2b);
+			// Override with extra parameter for specifying the nodata value of the result
+			if (override_function) {
+				const auto executor1b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+					RT_Math::ExecuteBinaryOp1b(op, args, state, result);
+				};
+				ScalarFunction func1b = ScalarFunction(
+				    function_name, {RasterTypes::DATACUBE(), RasterTypes::DATACUBE(), LogicalType::DOUBLE},
+				    RasterTypes::DATACUBE(), executor1b);
 
-			function_set.AddFunction(func2b);
+				function_set.AddFunction(func1b);
+
+				const auto executor2b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+					RT_Math::ExecuteBinaryOp2b(op, args, state, result);
+				};
+				ScalarFunction func2b =
+				    ScalarFunction(function_name, {RasterTypes::DATACUBE(), LogicalType::DOUBLE, LogicalType::DOUBLE},
+				                   RasterTypes::DATACUBE(), executor2b);
+
+				function_set.AddFunction(func2b);
+			}
 
 			RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, description,
 			                                    "", tags);
