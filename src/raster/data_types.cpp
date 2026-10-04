@@ -216,7 +216,8 @@ bool CubeBinaryOp::Eval(CubeBinaryOp::Value op, const CubeCellValue &a, const Cu
 			if (b.value != 0.0) {
 				result = a.value / b.value;
 			} else {
-				result = a.value;
+				// Division by zero produces an invalid result; represent it as raster NoData.
+				result = a.no_data;
 			}
 			return true;
 		case CubeBinaryOp::Value::POW:
