@@ -642,6 +642,74 @@ void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, D
 	r.data_buffer.SetPosition(sizeof(DataHeader) + cube_size * sizeof(double));
 }
 
+void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, DataCube &r, double r_nodata) {
+	const size_t cube_size = a.GetCubeSize();
+
+	// If the cube is empty, just copy the header and return.
+	if (cube_size == 0) {
+		DataHeader r_header = a.GetHeader();
+		r_header.no_data = r_nodata;
+		r.SetHeader(r_header, false);
+		return;
+	}
+
+	if (a.header.bands != b.header.bands) {
+		throw std::runtime_error("Input data cubes must have the same number of bands");
+	}
+	if (a.header.cols != b.header.cols) {
+		throw std::runtime_error("Input data cubes must have the same number of columns");
+	}
+	if (a.header.rows != b.header.rows) {
+		throw std::runtime_error("Input data cubes must have the same number of rows");
+	}
+
+	a.EnsureRaw();
+	b.EnsureRaw();
+	DataHeader r_header = a.header;
+	r_header.data_type = DataType::Value::DOUBLE;
+	r_header.no_data = r_nodata;
+	r.SetHeader(r_header, true);
+
+	data_ptr_t a_data_ptr = a.data_buffer.GetData() + sizeof(DataHeader);
+	data_ptr_t b_data_ptr = b.data_buffer.GetData() + sizeof(DataHeader);
+	double *r_data_ptr = reinterpret_cast<double *>(r.data_buffer.GetData() + sizeof(DataHeader));
+
+	const DataType::Value a_data_type = a.header.data_type;
+	const DataType::Value b_data_type = b.header.data_type;
+	CubeCellValue a_cell_val = {0, 0.0, a.header.no_data};
+	CubeCellValue b_cell_val = {0, 0.0, b.header.no_data};
+	double result = 0.0;
+
+	for (idx_t i = 0; i < cube_size; i++) {
+		a_cell_val.index = i;
+		a_cell_val.value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
+		a_cell_val.no_data = a.header.no_data;
+		b_cell_val.index = i;
+		b_cell_val.value = DataCube::ReadValueAs<double>(b_data_type, b_data_ptr, i);
+		b_cell_val.no_data = b.header.no_data;
+
+		// Replace no-data values with the result no-data value before applying the cell function.
+		if (a_cell_val.IsNoDataValue()) {
+			a_cell_val.value = r_nodata;
+			a_cell_val.no_data = r_nodata;
+		}
+		if (b_cell_val.IsNoDataValue()) {
+			b_cell_val.value = r_nodata;
+			b_cell_val.no_data = r_nodata;
+			a_cell_val.no_data = r_nodata;
+		}
+
+		// Write the result of the cell operation to the result cube.
+		if (func(a_cell_val, b_cell_val, result)) {
+			*r_data_ptr = result;
+		} else {
+			*r_data_ptr = a_cell_val.value;
+		}
+		r_data_ptr++;
+	}
+	r.data_buffer.SetPosition(sizeof(DataHeader) + cube_size * sizeof(double));
+}
+
 void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &b, DataCube &r) {
 	const size_t cube_size = a.GetCubeSize();
 
@@ -668,6 +736,62 @@ void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &
 		a_cell_val.index = i;
 		a_cell_val.value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
 		b_cell_val.index = i;
+
+		// Write the result of the cell operation to the result cube.
+		if (func(a_cell_val, b_cell_val, result)) {
+			*r_data_ptr = result;
+		} else {
+			*r_data_ptr = a_cell_val.value;
+		}
+		r_data_ptr++;
+	}
+	r.data_buffer.SetPosition(sizeof(DataHeader) + cube_size * sizeof(double));
+}
+
+void DataCube::Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &b, DataCube &r, double r_nodata) {
+	const size_t cube_size = a.GetCubeSize();
+
+	// If the cube is empty, just copy the header and return.
+	if (cube_size == 0) {
+		DataHeader r_header = a.GetHeader();
+		r_header.no_data = r_nodata;
+		r.SetHeader(r_header, false);
+		return;
+	}
+
+	a.EnsureRaw();
+	DataHeader r_header = a.header;
+	r_header.data_type = DataType::Value::DOUBLE;
+	r_header.no_data = r_nodata;
+	r.SetHeader(r_header, true);
+
+	data_ptr_t a_data_ptr = a.data_buffer.GetData() + sizeof(DataHeader);
+	double *r_data_ptr = reinterpret_cast<double *>(r.data_buffer.GetData() + sizeof(DataHeader));
+
+	const DataType::Value a_data_type = a.header.data_type;
+	CubeCellValue a_cell_val = {0, 0.0, a.header.no_data};
+	CubeCellValue b_cell_val = {0, b, NumericLimits<double>::Minimum()};
+	double b_nodata = NumericLimits<double>::Minimum();
+	double result = 0.0;
+
+	for (idx_t i = 0; i < cube_size; i++) {
+		a_cell_val.index = i;
+		a_cell_val.value = DataCube::ReadValueAs<double>(a_data_type, a_data_ptr, i);
+		a_cell_val.no_data = a.header.no_data;
+		b_cell_val.index = i;
+		b_cell_val.value = b;
+		b_cell_val.no_data = b_nodata;
+
+		// Replace no-data values with the result no-data value before applying the cell function.
+		if (a_cell_val.IsNoDataValue()) {
+			a_cell_val.value = r_nodata;
+			a_cell_val.no_data = r_nodata;
+		}
+		if (b_cell_val.IsNoDataValue()) {
+			b_cell_val.value = r_nodata;
+			b_cell_val.no_data = r_nodata;
+			a_cell_val.no_data = r_nodata;
+		}
 
 		// Write the result of the cell operation to the result cube.
 		if (func(a_cell_val, b_cell_val, result)) {

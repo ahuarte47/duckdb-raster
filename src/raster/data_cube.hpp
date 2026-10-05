@@ -111,6 +111,12 @@ public:
 	static void Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, DataCube &r);
 	//! Apply a binary cell function to every cell of `a` paired with the scalar `b`, writing results into `r`.
 	static void Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &b, DataCube &r);
+	//! Apply a binary cell function to every corresponding cell of `a` and `b`, writing results into `r`
+	//! and setting the nodata value to `r_nodata`.
+	static void Apply(const CubeBinaryCellFunc &func, DataCube &a, DataCube &b, DataCube &r, double r_nodata);
+	//! Apply a binary cell function to every cell of `a` paired with the scalar `b`, writing results into `r`
+	//! and setting the nodata value to `r_nodata`.
+	static void Apply(const CubeBinaryCellFunc &func, DataCube &a, const double &b, DataCube &r, double r_nodata);
 
 	//! Apply a generic cell function to every cell of `a` in the specified band.
 	static void Apply(const CubeCellFunc &func, DataCube &a, int32_t band);

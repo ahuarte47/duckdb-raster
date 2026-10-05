@@ -22,6 +22,17 @@ FROM
 query I
 WITH __input AS (
     SELECT
+        RT_Array2Cube([10, 0, -10, 5]::DOUBLE[], 'RAW', 1, 2, 2, -9999.0) AS a,
+        RT_Array2Cube([0, 0, 0, 2]::DOUBLE[], 'RAW', 1, 2, 2, -9999.0) AS b
+)
+SELECT RT_Cube2ArrayDouble(a / b, false).values
+FROM __input;
+----
+[-9999.0, -9999.0, -9999.0, 2.5]
+
+query I
+WITH __input AS (
+    SELECT
         RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS a,
         RT_Array2Cube([1,2,3,4,5,6], 'RAW', 1, 2, 3, -9999.0) AS b
 )
@@ -106,8 +117,8 @@ FROM
 query III
 WITH __input AS (
     SELECT
-        databand_1 AS red,
-        databand_3 AS nir
+        RT_CubeSetNodata(databand_1, -9999) AS red,
+        RT_CubeSetNodata(databand_3, -9999) AS nir
     FROM
         RT_Read('./test/data/overlay-sample.tiff', blocksize_x := 512, blocksize_y := 512)
 ),
@@ -119,7 +130,7 @@ __ndvi AS (
 ),
 __array AS (
     SELECT
-        RT_Cube2ArrayFloat(ndvi, false) AS r
+        RT_Cube2ArrayFloat(ndvi, true) AS r
     FROM
         __ndvi
 )
@@ -131,7 +142,7 @@ FROM
     __array
 ;
 ----
--1.0	0.28172306838728434	1.0
+-1.0	0.32190532917783177	1.0
 
 query I
 SELECT
@@ -154,3 +165,106 @@ WHERE
 ;
 ----
 23
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeGreater(a, b), false).values FROM t;
+----
+[1.0, 0.0, 0.0, 0.0]
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeGreater(RT_CubeSetNoData(a, -9999), RT_CubeSetNoData(b, -9999.0)), false).values FROM t;
+----
+[1.0, 0.0, -9999.0, -9999.0]
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeGreater(a, b, -9999.0), false) FROM t;
+----
+{'data_type': 9, 'bands': 1, 'cols': 2, 'rows': 2, 'no_data': -9999.0, 'values': [1.0, 0.0, -9999.0, -9999.0]}
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeGreater(RT_CubeSetNoData(a, -9999), RT_CubeSetNoData(b, -9999.0)), true).values FROM t;
+----
+[1.0, 0.0]
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeSubtract(a, b), false).values FROM t;
+----
+[2.0, 0.0, 0.0, 0.0]
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(a + b, false).values FROM t;
+----
+[8.0, 6.0, 0.0, 0.0]
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeSubtract(RT_CubeSetNoData(a, -9999), RT_CubeSetNoData(b, -9999)), false).values FROM t;
+----
+[2.0, 0.0, -9999.0, -9999.0]
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeSubtract(a, b, -9999), false).values FROM t;
+----
+[2.0, 0.0, -9999.0, -9999.0]
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeSetNoData(a, -9999) - RT_CubeSetNoData(b, -9999), false).values FROM t;
+----
+[2.0, 0.0, -9999.0, -9999.0]
+
+query I
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeSetNoData(a, -9999) - RT_CubeSetNoData(b, -9999), true).values FROM t;
+----
+[2.0, 0.0]
+
+query IIII
+WITH t AS (
+  SELECT RT_Array2Cube([5, 3, 7, 0]::DOUBLE[], 'RAW', 1, 2, 2, 0) a,
+         RT_Array2Cube([3, 3, 0, 4]::DOUBLE[], 'RAW', 1, 2, 2, 0) b
+)
+SELECT RT_Cube2ArrayDouble(RT_CubeSubtract(a, b), false).values AS sub_all,
+       RT_Cube2ArrayDouble(RT_CubeSubtract(a, b), true).values  AS sub_valid,
+       RT_Cube2ArrayDouble(RT_CubeGreater(a, b), true).values   AS gt_valid,
+       RT_CubeStats(RT_CubeSubtract(a, b), 0)                   AS sub_stats
+FROM t;
+----
+[2.0, 0.0, 0.0, 0.0]	[2.0]	[1.0]	{'minimum': 2.0, 'maximum': 2.0, 'sum': 2.0, 'mean': 2.0, 'stddev': 0.0, 'valid_count': 1, 'nodata_count': 3}
