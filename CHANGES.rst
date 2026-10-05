@@ -1,6 +1,13 @@
 Release history
 ---------------
 
+1.6.2
+++++++++++++++++++
+
+- Fix the management of NODATA values in Cube binary functions.
+- New optional parameter `r_nodata` to specify the NODATA value for the result of Cube binary operations.
+- The `RT_CubeDivide` function returns NODATA when divisor is zero.
+
 1.6.1
 ++++++++++++++++++
 
