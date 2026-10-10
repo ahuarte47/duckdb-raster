@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+1.6.3
+++++++++++++++++++
+
+- New optional parameter to calculate approximate statistics in the `RT_RasterStats` function.
+
 1.6.2
 ++++++++++++++++++
 

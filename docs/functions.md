@@ -867,6 +867,7 @@ Just to compute statistics for a specific band of a raster:
 | --------- | -----| ----------- |
 | `filepath` | VARCHAR | The raster file path to compute statistics for. |
 | `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+| [`approx_stats`] | BOOLEAN | Whether to calculate approximate statistics instead of accurate statistics, the default is false. |
 
 To compute statistics for a specific band of a datacube, but only for those valid (non-nodata)
 cells that fall within a geometry (Zonal statistics):
@@ -880,7 +881,7 @@ cells that fall within a geometry (Zonal statistics):
 #### Signature
 
 ```sql
-RT_Stats (filepath VARCHAR, band INTEGER)
+RT_Stats (filepath VARCHAR, band INTEGER, [approx_stats BOOLEAN DEFAULT false])
 RT_Stats (filepath VARCHAR, band INTEGER, geometry GEOMETRY)
 ```
 

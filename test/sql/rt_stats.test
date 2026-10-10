@@ -69,3 +69,21 @@ FROM
 ;
 ----
 0.0	255.0	159.782638	62.911198	57600	0	0.0	255.0	119.094704	60.559050	57600	0	0.0	254.0	108.362517	61.648556	57600	0
+
+query IIIIII
+WITH __input AS (
+    SELECT
+        RT_Stats('./test/data/mosaic/SCL.tif-land-clip00.tiff', 0, true) AS stats
+)
+SELECT
+    stats.minimum,
+    stats.maximum,
+    stats.mean,
+    stats.stddev,
+    stats.valid_count,
+    stats.nodata_count
+FROM
+    __input
+;
+----
+0.0	20.0	3.5177521686739	3.4823442128833	NULL	NULL

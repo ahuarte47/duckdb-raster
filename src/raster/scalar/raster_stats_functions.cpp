@@ -760,9 +760,9 @@ struct RT_RasterStats {
 	// Execute
 	//------------------------------------------------------------------------------------------------------------------
 
-	//! Calculate statistics of a band in a raster.
+	//! Calculate statistics of a band in a raster (Accurate or approximate results based on the third argument).
 	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
-		D_ASSERT(args.data.size() == 2);
+		D_ASSERT(args.data.size() == 2 || args.data.size() == 3);
 		const idx_t count = args.size();
 		args.Flatten();
 
@@ -793,6 +793,31 @@ struct RT_RasterStats {
 
 			if (band_index >= dataset->GetRasterCount()) {
 				throw InvalidInputException("Band index out of range");
+			}
+
+			// If a third argument is provided, it indicates whether to calculate approximate statistics or not.
+			if (args.data.size() == 3) {
+				const bool approx_stats = args.data[2].GetValue(i).GetValue<bool>();
+
+				if (approx_stats) {
+					GDALRasterBand *band = dataset->GetRasterBand(band_index + 1);
+					double min_v = 0, max_v = 0, mean_v = 0, stddev_v = 0;
+
+					if (band && band->GetStatistics(TRUE, FALSE, &min_v, &max_v, &mean_v, &stddev_v) == CE_None) {
+						Value value =
+						    Value::STRUCT({{"minimum", Value::DOUBLE(min_v)},
+						                   {"maximum", Value::DOUBLE(max_v)},
+						                   {"sum", Value::DOUBLE(mean_v * band->GetXSize() * band->GetYSize())},
+						                   {"mean", Value::DOUBLE(mean_v)},
+						                   {"stddev", Value::DOUBLE(stddev_v)},
+						                   {"valid_count", Value()},
+						                   {"nodata_count", Value()}});
+
+						value.Reinterpret(RasterTypes::STATS());
+						result.SetValue(i, value);
+						continue;
+					}
+				}
 			}
 
 			LoadDataCubeBand(dataset.get(), band_index, GeometryExtent::Empty(), data_cube);
@@ -918,6 +943,7 @@ struct RT_RasterStats {
 		| --------- | -----| ----------- |
 		| [`filepath`, `filepaths`] | [VARCHAR, VARCHAR[]] | The file path[s] of the raster[s] to compute statistics for. |
 		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
+		| [`approx_stats`] | BOOLEAN | Whether to calculate approximate statistics instead of accurate statistics, the default is false. |
 
 		To compute statistics for a specific band of a raster, but only for those valid (non-nodata)
 		cells that fall within a geometry (Zonal statistics):
@@ -931,6 +957,7 @@ struct RT_RasterStats {
 
 	static constexpr auto EXAMPLE = R"(
 		SELECT RT_Stats('some/file/path/filename.tif', 0);
+		SELECT RT_Stats('some/file/path/filename.tif', 0, true);
 		SELECT RT_Stats(['some/file/path/filename_1.tif', 'some/file/path/filename_2.tif'], 0);
 	)";
 
@@ -970,6 +997,12 @@ struct RT_RasterStats {
 
 		function_04.SetVolatile();
 		function_set.AddFunction(function_04);
+
+		ScalarFunction function_05 = ScalarFunction({LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::BOOLEAN},
+		                                            RasterTypes::STATS(), Execute);
+
+		function_05.SetVolatile();
+		function_set.AddFunction(function_05);
 
 		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
 		                                    EXAMPLE, tags);
