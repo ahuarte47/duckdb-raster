@@ -5,6 +5,8 @@ Release history
 ++++++++++++++++++
 
 - New optional parameter to calculate approximate statistics in the `RT_RasterStats` function.
+- New optional parameter to pass the coordinate pairs (x, y) to the `RT_RasterValues` function as a single array of two-element coordinate pairs.
+- New optional parameter to pass the coordinate pairs (x, y) to the `RT_CoordValues` function as a single array of two-element coordinate pairs.
 
 1.6.2
 ++++++++++++++++++

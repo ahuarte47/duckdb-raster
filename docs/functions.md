@@ -976,8 +976,9 @@ SELECT
 ### RT_RasterValues
 
 Returns the values in a band of a datacube or filepath[s] at the specified array of pixel coordinates (column, row).
+The function accepts input coordinates in two different formats.
 
-The function accepts the following parameters:
+First version uses separate arrays for columns and rows:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
@@ -985,6 +986,15 @@ The function accepts the following parameters:
 | `band` | INTEGER | The 0-based index of the band to read the values from. |
 | `cols` | INTEGER[] | The array of pixel column indices within the tile. |
 | `rows` | INTEGER[] | The array of pixel row indices within the tile. |
+| `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
+
+The second version uses a single array of coordinate pairs:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+| `band` | INTEGER | The 0-based index of the band to read the value from. |
+| `pixels` | INTEGER[][2] | The array of coordinate pairs (column, row) within the tile. |
 | `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
 
 When first parameter is an array of file paths, the function generates a virtual raster that combines all the specified files as a mosaic,
@@ -998,23 +1008,31 @@ RT_RasterValues ([databand DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
                  cols INTEGER[],
                  rows INTEGER[],
                  default_value DOUBLE)
+
+RT_RasterValues ([databand DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
+                 band INTEGER,
+                 pixels INTEGER[][2],
+                 default_value DOUBLE)
 ```
 
 #### Examples
 
 ```sql
 SELECT
-    RT_RasterValues(databand_1, 0, [10, 11], [20, 21], -9999.0)
+    RT_RasterValues(databand_1, 0, [10, 11], [20, 21], -9999.0),
+    RT_RasterValues(databand_1, 0, [[10, 20], [11, 21]], -9999.0)
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
 
 SELECT
-    RT_RasterValues('path/to/raster/file.tif', 0, [10, 11], [20, 21], -9999.0)
+    RT_RasterValues('path/to/raster/file.tif', 0, [10, 11], [20, 21], -9999.0),
+    RT_RasterValues('path/to/raster/file.tif', 0, [[10, 20], [11, 21]], -9999.0)
 ;
 
 SELECT
-    RT_RasterValues(['path/to/raster/file_1.tif', 'path/to/raster/file_2.tif'], 0, [10, 11], [20, 21], -9999.0)
+    RT_RasterValues(['path/to/raster/file_1.tif', 'path/to/raster/file_2.tif'], 0, [10, 11], [20, 21], -9999.0),
+    RT_RasterValues(['path/to/raster/file_1.tif', 'path/to/raster/file_2.tif'], 0, [[10, 20], [11, 21]], -9999.0)
 ;
 ```
 
@@ -1048,14 +1066,14 @@ block size of tile in `x` and `y` directions.
 #### Signature
 
 ```sql
-RT_CoordValue ([datacube DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
+RT_CoordValue (datacube DATACUBE,
                band INTEGER,
                x DOUBLE,
                y DOUBLE,
                metadata JSON,
                default_value DOUBLE)
 
-RT_CoordValue ([datacube DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
+RT_CoordValue ([filepath VARCHAR, filepaths VARCHAR[]],
                band INTEGER,
                x DOUBLE,
                y DOUBLE,
@@ -1087,8 +1105,9 @@ SELECT
 ### RT_CoordValues
 
 Returns the values in a band of a datacube or filepath[s] at the specified array of world coordinates (x, y).
+The function accepts input coordinates in two different formats.
 
-The function accepts the following parameters:
+First version uses separate arrays for x and y coordinates:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
@@ -1099,23 +1118,44 @@ The function accepts the following parameters:
 | `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size (Only required for datacube input). |
 | `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
 
+The second version uses a single array of coordinate pairs:
+
+| Parameter | Type | Description |
+| --------- | -----| ----------- |
+| [`databand`, `filepath`, `filepaths`] | [DATACUBE | VARCHAR | VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+| `band` | INTEGER | The 0-based index of the band to read the value from. |
+| `coords` | DOUBLE[][2] | The array of coordinate pairs (x, y) of the pixels within the tile. |
+| `metadata` | JSON | The metadata associated with the datacube. |
+| `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
+
 When first parameter is an array of file paths, the function generates a virtual raster that combines all the specified files as a mosaic,
 and then retrieves the values at the given coordinates.
 
 #### Signature
 
 ```sql
-RT_CoordValues ([datacube DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
+RT_CoordValues (datacube DATACUBE,
                 band INTEGER,
                 xs DOUBLE[],
                 ys DOUBLE[],
                 metadata JSON,
                 default_value DOUBLE)
 
-RT_CoordValues ([datacube DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
+RT_CoordValues (datacube DATACUBE,
+                band INTEGER,
+                coords DOUBLE[][2],
+                metadata JSON,
+                default_value DOUBLE)
+
+RT_CoordValues ([filepath VARCHAR, filepaths VARCHAR[]],
                 band INTEGER,
                 xs DOUBLE[],
                 ys DOUBLE[],
+                default_value DOUBLE)
+
+RT_CoordValues ([filepath VARCHAR, filepaths VARCHAR[]],
+                band INTEGER,
+                coords DOUBLE[][2],
                 default_value DOUBLE)
 ```
 
@@ -1123,17 +1163,20 @@ RT_CoordValues ([datacube DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
 
 ```sql
 SELECT
-    RT_CoordValues(databand_1, 0, [545600.0, 545601.0], [4724500.0, 4724501.0], metadata, -9999.0)
+    RT_CoordValues(databand_1, 0, [545600.0, 545601.0], [4724500.0, 4724501.0], metadata, -9999.0),
+    RT_CoordValues(databand_1, 0, [[545600.0, 4724500.0], [545601.0, 4724501.0]], metadata, -9999.0)
 FROM
     RT_Read('path/to/raster/file.tif')
 ;
 
 SELECT
-    RT_CoordValues('path/to/raster/file.tif', 0, [545600.0, 545601.0], [4724500.0, 4724501.0], -9999.0)
+    RT_CoordValues('path/to/raster/file.tif', 0, [545600.0, 545601.0], [4724500.0, 4724501.0], -9999.0),
+    RT_CoordValues('path/to/raster/file.tif', 0, [[545600.0, 4724500.0], [545601.0, 4724501.0]], -9999.0)
 ;
 
 SELECT
-    RT_CoordValues(['path/to/raster/file_1.tif', 'path/to/raster/file_2.tif'], 0, [545600.0, 545601.0], [4724500.0, 4724501.0], -9999.0)
+    RT_CoordValues(['path/to/raster/file_1.tif', 'path/to/raster/file_2.tif'], 0, [545600.0, 545601.0], [4724500.0, 4724501.0], -9999.0),
+    RT_CoordValues(['path/to/raster/file_1.tif', 'path/to/raster/file_2.tif'], 0, [[545600.0, 4724500.0], [545601.0, 4724501.0]], -9999.0)
 ;
 ```
 
