@@ -129,6 +129,8 @@ struct RT_Read {
 
 		// Pushdown filter expressions.
 		vector<unique_ptr<Expression>> filter_expressions;
+		//! The filter evaluator for pushdown filtering, if defined.
+		unique_ptr<FilterEval> filter_eval;
 
 		~BindData() override {
 			// Ensure the GDAL dataset is properly closed when the bind data is destroyed.
@@ -480,6 +482,13 @@ struct RT_Read {
 			}
 		}
 
+		// Initialize the filter evaluator for pushdown filtering.
+		const auto &filter_expressions = bind_data.filter_expressions;
+		const auto &column_ids = bind_data.column_ids;
+		const auto &column_types = bind_data.column_types;
+		auto filter_eval = make_uniq<FilterEval>(context, filter_expressions, column_ids, column_types);
+		bind_data.filter_eval = std::move(filter_eval);
+
 		return make_uniq_base<GlobalTableFunctionState, State>();
 	}
 
@@ -629,8 +638,7 @@ struct RT_Read {
 
 	//! Fill the output chunk with data for the specified tile coordinates.
 	static bool FillOutput(const BindData &bind_data, const idx_t &row_id, const idx_t &row_index, const int32_t &level,
-	                       const int32_t &tile_x, const int32_t &tile_y, const FilterContext &filter_context,
-	                       DataCube &data_cube, DataChunk &output) {
+	                       const int32_t &tile_x, const int32_t &tile_y, DataCube &data_cube, DataChunk &output) {
 		GDALDataset *dataset = bind_data.dataset.get();
 
 		const auto &metadata_ds = bind_data.metadata_ds;
@@ -639,12 +647,14 @@ struct RT_Read {
 		const int32_t raster_size_y = bind_data.raster_size_y;
 		const int32_t block_size_x = bind_data.block_size_x;
 		const int32_t block_size_y = bind_data.block_size_y;
-		const auto &column_ids = bind_data.column_ids;
 
 		const int32_t offset_x = tile_x * block_size_x;
 		const int32_t offset_y = tile_y * block_size_y;
 		const int32_t size_x = MinValue<int32_t>(block_size_x, raster_size_x - offset_x);
 		const int32_t size_y = MinValue<int32_t>(block_size_y, raster_size_y - offset_y);
+
+		FilterEval *filter_eval = bind_data.filter_eval.get();
+		const auto &column_ids = bind_data.column_ids;
 
 		// Skip empty/sparse tiles (SPARSE_OK GeoTIFF optimization).
 		// GetDataCoverageStatus() returns GDAL_DATA_COVERAGE_STATUS_EMPTY when the tile
@@ -690,7 +700,7 @@ struct RT_Read {
 		                            metadata_ds};
 
 		// The filter expressions were evaluated but raster tile does not match the conditions?
-		if (!FilterEval::Eval(raster_row, filter_context)) {
+		if (filter_eval && !filter_eval->Eval(raster_row)) {
 			RASTER_SCAN_DEBUG_LOG(3, " > txy=(%d, %d): tile did not match filter conditions, skipped", tile_x, tile_y);
 			return false;
 		}
@@ -825,11 +835,6 @@ struct RT_Read {
 
 		RASTER_SCAN_DEBUG_LOG(2, "Execute: start_row=%" PRIu64 ", vector_size=%" PRIu64, start_row, vector_size);
 
-		const auto &filter_expressions = bind_data.filter_expressions;
-		const auto &column_ids = bind_data.column_ids;
-		const auto &column_types = bind_data.column_types;
-		const FilterContext filter_context(context, filter_expressions, column_ids, column_types);
-
 		// Loop over the tiles and fill the output chunk, it reuses DataCubes for avoiding repeated memory allocations.
 
 		DataCube data_cube(Allocator::Get(context));
@@ -839,7 +844,7 @@ struct RT_Read {
 
 			for (int32_t tile_x = first_tx; tile_x < tiles_x && output_size < vector_size; ++tile_x) {
 				// Process one tile.
-				if (FillOutput(bind_data, row_id, output_size, 0, tile_x, tile_y, filter_context, data_cube, output)) {
+				if (FillOutput(bind_data, row_id, output_size, 0, tile_x, tile_y, data_cube, output)) {
 					output_size++;
 				}
 				row_id++;
@@ -1319,7 +1324,7 @@ struct RT_ReadCells {
 	//! Fill the output chunk with data for the specified tile coordinates.
 	static OutputResult FillOutput(const RT_Read::BindData &bind_data, const idx_t &row_id, const idx_t &row_index,
 	                               const size_t &max_output, const int32_t &tile_x, const int32_t &tile_y,
-	                               const FilterContext &filter_context, DataCube &data_cube, DataChunk &output) {
+	                               DataCube &data_cube, DataChunk &output) {
 		GDALDataset *dataset = bind_data.dataset.get();
 
 		const auto &gt = bind_data.geo_transform;
@@ -1328,12 +1333,14 @@ struct RT_ReadCells {
 		const int32_t raster_size_y = bind_data.raster_size_y;
 		const int32_t block_size_x = bind_data.block_size_x;
 		const int32_t block_size_y = bind_data.block_size_y;
-		const auto &column_ids = bind_data.column_ids;
 
 		const int32_t offset_x = tile_x * block_size_x;
 		const int32_t offset_y = tile_y * block_size_y;
 		const int32_t size_x = MinValue<int32_t>(block_size_x, raster_size_x - offset_x);
 		const int32_t size_y = MinValue<int32_t>(block_size_y, raster_size_y - offset_y);
+
+		FilterEval *filter_eval = bind_data.filter_eval.get();
+		const auto &column_ids = bind_data.column_ids;
 
 		int32_t local_cell_id = 0;
 
@@ -1436,7 +1443,7 @@ struct RT_ReadCells {
 			result.processed++;
 
 			// The filter expressions were evaluated but raster tile does not match the conditions?
-			if (!FilterEval::Eval(cell_row, filter_context)) {
+			if (filter_eval && !filter_eval->Eval(cell_row)) {
 				RASTER_SCAN_DEBUG_LOG(3, " > cell_id=(%" PRIu64 "): tile did not match filter conditions, skipped",
 				                      (uint64_t)(row_id + i));
 				continue;
@@ -1601,11 +1608,6 @@ struct RT_ReadCells {
 
 		RASTER_SCAN_DEBUG_LOG(2, "Execute: start_row=%" PRIu64 ", vector_size=%" PRIu64, start_row, vector_size);
 
-		const auto &filter_expressions = bind_data.filter_expressions;
-		const auto &column_ids = bind_data.column_ids;
-		const auto &column_types = bind_data.column_types;
-		const FilterContext filter_context(context, filter_expressions, column_ids, column_types);
-
 		// Loop over the tiles and fill the output chunk, it reuses DataCubes for avoiding repeated memory allocations.
 
 		DataCube data_cube(Allocator::Get(context));
@@ -1617,8 +1619,8 @@ struct RT_ReadCells {
 				const int32_t max_output = vector_size - output_size;
 
 				// Process cells in one tile.
-				OutputResult result = FillOutput(bind_data, row_id, output_size, max_output, tile_x, tile_y,
-				                                 filter_context, data_cube, output);
+				OutputResult result =
+				    FillOutput(bind_data, row_id, output_size, max_output, tile_x, tile_y, data_cube, output);
 
 				output_size += result.accepted;
 				row_id += result.processed;

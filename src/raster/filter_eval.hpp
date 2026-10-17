@@ -6,22 +6,99 @@
 // DuckDB
 #include "duckdb.hpp"
 #include "duckdb/common/types/value.hpp"
+#include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/main/client_context.hpp"
 
 namespace duckdb {
 
-/**
- * Context for expression evaluation on a raster tile set of attributes.
- */
-class FilterContext {
+//! An interface representing a row of attributes for filter evaluation.
+class IFilterRow {
 public:
-	FilterContext(ClientContext &context, const vector<unique_ptr<Expression>> &expressions,
-	              const vector<column_t> &column_ids, const vector<LogicalType> &column_types)
+	virtual ~IFilterRow() = default;
+
+	//! Get the value types of the columns in the rows.
+	virtual vector<LogicalType> ValueTypesOf(const vector<column_t> &column_ids,
+	                                         const vector<LogicalType> &column_types) const = 0;
+
+	//! Get the value of a column in the row by index.
+	virtual const Value &ValueOf(int column_index) const = 0;
+};
+
+//! Class representing a row of attributes of a raster tile.
+class RasterRow : public IFilterRow {
+private:
+	//! A constant empty value to return for invalid column indices.
+	static const Value EMPTY_VALUE;
+
+public:
+	//! Constructor for RasterRow.
+	RasterRow(const Value &row_id, const Value &x, const Value &y, const Value &bbox, const Value &geometry,
+	          const Value &level, const Value &tile_x, const Value &tile_y, const Value &size_x, const Value &size_y,
+	          const Value &metadata_ds)
+	    : row_id(row_id), x(x), y(y), bbox(bbox), geometry(geometry), level(level), tile_x(tile_x), tile_y(tile_y),
+	      size_x(size_x), size_y(size_y), metadata_ds(metadata_ds) {
+	}
+
+	const Value row_id;
+	const Value x;
+	const Value y;
+	const Value bbox;
+	const Value geometry;
+	const Value level;
+	const Value tile_x;
+	const Value tile_y;
+	const Value size_x;
+	const Value size_y;
+	const Value metadata_ds;
+
+	//! Get the value types of the columns in the rows.
+	virtual vector<LogicalType> ValueTypesOf(const vector<column_t> &column_ids,
+	                                         const vector<LogicalType> &column_types) const override;
+
+	//! Get the value of a column in the row by index.
+	const Value &ValueOf(int column_index) const override;
+};
+
+//! Class representing a row of attributes of a raster cell.
+class CellRow : public IFilterRow {
+private:
+	//! A constant empty value to return for invalid column indices.
+	static const Value EMPTY_VALUE;
+
+public:
+	//! Constructor for CellRow.
+	CellRow(const Value &row_id, const Value &x, const Value &y, const Value &geometry, const Value &col,
+	        const Value &row)
+	    : row_id(row_id), x(x), y(y), geometry(geometry), col(col), row(row) {
+	}
+
+	const Value row_id;
+	const Value x;
+	const Value y;
+	const Value geometry;
+	const Value col;
+	const Value row;
+
+	//! Get the value types of the columns in the rows.
+	virtual vector<LogicalType> ValueTypesOf(const vector<column_t> &column_ids,
+	                                         const vector<LogicalType> &column_types) const override;
+
+	//! Get the value of a column in the row by index.
+	const Value &ValueOf(int column_index) const override;
+};
+
+/**
+ * Evaluates filter expressions on raster items.
+ */
+class FilterEval {
+public:
+	FilterEval(ClientContext &context, const vector<unique_ptr<Expression>> &expressions,
+	           const vector<column_t> &column_ids, const vector<LogicalType> &column_types)
 	    : context(context), expressions(expressions), column_ids(column_ids), column_types(column_types) {
 	}
 
-public:
+private:
 	//! The client context for expression execution.
 	ClientContext &context;
 	//! The set of filter expressions to evaluate.
@@ -30,101 +107,20 @@ public:
 	const vector<column_t> &column_ids;
 	//! The types of the columns.
 	const vector<LogicalType> &column_types;
-};
 
-//! Struct representing a raster row's attributes for filter evaluation.
-class RasterRow {
-private:
-	//! A constant empty value to return for invalid column indices.
-	static const Value EMPTY_VALUE;
+	//! The expression executor used for evaluating the filter expressions.
+	std::unique_ptr<ExpressionExecutor> executor;
+	//! The input DataChunk.
+	DataChunk input;
+	//! The result DataChunk.
+	DataChunk result;
 
-public:
-	const Value &row_id;
-	const Value &x;
-	const Value &y;
-	const Value &bbox;
-	const Value &geometry;
-	const Value &level;
-	const Value &tile_x;
-	const Value &tile_y;
-	const Value &size_x;
-	const Value &size_y;
-	const Value &metadata_ds;
+	//! Get the expression executor, initializing it if necessary.
+	ExpressionExecutor *GetExecutor(const IFilterRow &row);
 
-	//! Get the value of a column by index for filter evaluation.
-	const Value &ValueOf(int column_index) const {
-		switch (column_index) {
-		case RASTER_ROWID_COLUMN_INDEX:
-			return row_id;
-		case RASTER_X_COLUMN_INDEX:
-			return x;
-		case RASTER_Y_COLUMN_INDEX:
-			return y;
-		case RASTER_BBOX_COLUMN_INDEX:
-			return bbox;
-		case RASTER_GEOMETRY_COLUMN_INDEX:
-			return geometry;
-		case RASTER_LEVEL_COLUMN_INDEX:
-			return level;
-		case RASTER_COL_COLUMN_INDEX:
-			return tile_x;
-		case RASTER_ROW_COLUMN_INDEX:
-			return tile_y;
-		case RASTER_WIDTH_COLUMN_INDEX:
-			return size_x;
-		case RASTER_HEIGHT_COLUMN_INDEX:
-			return size_y;
-		case RASTER_METADATA_COLUMN_INDEX:
-			return metadata_ds;
-		default:
-			return EMPTY_VALUE;
-		}
-	}
-};
-
-//! Struct representing a raster cell's attributes for filter evaluation.
-class CellRow {
-private:
-	//! A constant empty value to return for invalid column indices.
-	static const Value EMPTY_VALUE;
-
-public:
-	const Value &row_id;
-	const Value &x;
-	const Value &y;
-	const Value &geometry;
-	const Value &col;
-	const Value &row;
-
-	//! Get the value of a column by index for filter evaluation.
-	const Value &ValueOf(int column_index) const {
-		switch (column_index) {
-		case CELL_ROWID_COLUMN_INDEX:
-			return row_id;
-		case CELL_X_COLUMN_INDEX:
-			return x;
-		case CELL_Y_COLUMN_INDEX:
-			return y;
-		case CELL_GEOMETRY_COLUMN_INDEX:
-			return geometry;
-		case CELL_COL_COLUMN_INDEX:
-			return col;
-		case CELL_ROW_COLUMN_INDEX:
-			return row;
-		default:
-			return EMPTY_VALUE;
-		}
-	}
-};
-
-/**
- * Evaluation class for FilterPushDown.
- * Evaluates filter expressions on a raster tile set of attributes.
- */
-class FilterEval {
 public:
 	/**
-	 * Evaluate a set of DuckDB expressions on a raster tile set of attributes.
+	 * Evaluate a set of DuckDB expressions on a raster item.
 	 *
 	 * Returns True if the filter was successfully evaluated or not totally supported by the evaluator.
 	 * False means we must skip the current tile in the table scan.
@@ -132,18 +128,7 @@ public:
 	 * In case of unsupported expressions, the filter will be evaluated at a later stage by
 	 * the DuckDB runtime engine.
 	 */
-	static bool Eval(const RasterRow &row, const FilterContext &ctx);
-
-	/**
-	 * Evaluate a set of DuckDB expressions on a raster cell set of attributes.
-	 *
-	 * Returns True if the filter was successfully evaluated or not totally supported by the evaluator.
-	 * False means we must skip the current cell in the table scan.
-	 *
-	 * In case of unsupported expressions, the filter will be evaluated at a later stage by
-	 * the DuckDB runtime engine.
-	 */
-	static bool Eval(const CellRow &row, const FilterContext &ctx);
+	bool Eval(const IFilterRow &row);
 };
 
 } // namespace duckdb
