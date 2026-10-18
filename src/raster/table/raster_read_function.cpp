@@ -448,7 +448,7 @@ struct RT_Read {
 	// Init Global
 	//------------------------------------------------------------------------------------------------------------------
 
-	struct State final : GlobalTableFunctionState {
+	struct State : GlobalTableFunctionState {
 		idx_t current_row;
 		explicit State() : current_row(0) {
 		}
@@ -1026,6 +1026,32 @@ struct RT_Read {
 // RT_ReadCells
 //======================================================================================================================
 
+//! A DataCube instance to share among different Execution invocations when reading cells.
+class CellDataCube : public DataCube {
+public:
+	//! Constructor for the CellDataCube class.
+	CellDataCube(Allocator &allocator) : DataCube(allocator), cube_x(-1), cube_y(-1) {
+	}
+
+private:
+	//! The global x-coordinate of the currently loaded DataCube.
+	int32_t cube_x;
+	//! The global y-coordinate of the currently loaded DataCube.
+	int32_t cube_y;
+
+public:
+	//! Returns whether the data cube is ready for the specified tile coordinates.
+	bool IsDataReady(int32_t cube_x, int32_t cube_y) const {
+		return this->cube_x == cube_x && this->cube_y == cube_y;
+	}
+
+	//! Sets the current DataCube coordinates and marks the data cube as loaded.
+	void SetReady(int32_t cube_x, int32_t cube_y) {
+		this->cube_x = cube_x;
+		this->cube_y = cube_y;
+	}
+};
+
 struct RT_ReadCells {
 	//------------------------------------------------------------------------------------------------------------------
 	// Bind
@@ -1254,6 +1280,22 @@ struct RT_ReadCells {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// Init Global
+	//------------------------------------------------------------------------------------------------------------------
+
+	struct CellState final : RT_Read::State {
+		CellDataCube data_cube;
+		explicit CellState(ClientContext &context) : RT_Read::State(), data_cube(Allocator::Get(context)) {
+		}
+	};
+
+	static unique_ptr<GlobalTableFunctionState> Init(ClientContext &context, TableFunctionInitInput &input) {
+		auto result = RT_Read::Init(context, input);
+		result.reset();
+		return make_uniq_base<GlobalTableFunctionState, CellState>(context);
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Execute
 	//------------------------------------------------------------------------------------------------------------------
 
@@ -1324,7 +1366,7 @@ struct RT_ReadCells {
 	//! Fill the output chunk with data for the specified tile coordinates.
 	static OutputResult FillOutput(const RT_Read::BindData &bind_data, const idx_t &row_id, const idx_t &row_index,
 	                               const size_t &max_output, const int32_t &tile_x, const int32_t &tile_y,
-	                               DataCube &data_cube, DataChunk &output) {
+	                               CellDataCube &data_cube, DataChunk &output) {
 		GDALDataset *dataset = bind_data.dataset.get();
 
 		const auto &gt = bind_data.geo_transform;
@@ -1391,23 +1433,45 @@ struct RT_ReadCells {
 		IGNORE_CELLS ignore_cells = bind_data.ignore_cells;
 
 		auto read_band_data = [&]() {
-			const size_t cube_size = static_cast<size_t>(num_bands) * size_x * size_y * data_size;
-			data_buffer.GrowCapacity(cube_size);
+			if (!data_cube.IsDataReady(tile_x, tile_y)) {
+				const size_t cube_size = static_cast<size_t>(num_bands) * size_x * size_y * data_size;
+				data_buffer.SetPosition(0);
+				data_buffer.GrowCapacity(cube_size);
 
-			// Read the data of all bands...
-			CPLErr read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_buffer.GetData(),
-			                                    size_x, size_y, data_type, num_bands, nullptr, 0, 0, 0, nullptr);
+				// Read the data of all bands...
+				CPLErr read_err = dataset->RasterIO(GF_Read, offset_x, offset_y, size_x, size_y, data_buffer.GetData(),
+				                                    size_x, size_y, data_type, num_bands, nullptr, 0, 0, 0, nullptr);
 
-			// Is there an error reading the tile data?
-			if (read_err != CE_None) {
-				const std::string error = RasterUtils::GetLastGdalErrorMsg();
-				throw IOException("Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
+				// Is there an error reading the tile data?
+				if (read_err != CE_None) {
+					const std::string error = RasterUtils::GetLastGdalErrorMsg();
+					throw IOException("Failed to read tile (%d, %d): %s", tile_x, tile_y, error.c_str());
+				}
+
+				// fprintf(stderr, "-> Reading data for tile (%d, %d), row_id=%" PRIu64 "\n", tile_x, tile_y, row_id);
+				data_cube.SetReady(tile_x, tile_y);
+			} else {
+				// fprintf(stderr, "-> Data ready for tile (%d, %d), row_id=%" PRIu64 "\n", tile_x, tile_y, row_id);
+				data_buffer.SetPosition(0);
 			}
 		};
 
 		if (ignore_cells != IGNORE_CELLS::NEVER && !data_read) {
 			read_band_data();
 			data_read = true;
+		}
+
+		// Only build the geometry WKT string if the geometry column is needed, as it is computationally expensive.
+
+		bool need_geometry = false;
+
+		for (idx_t col_idx = 0; col_idx < column_ids.size(); col_idx++) {
+			const auto &dim_index = column_ids[col_idx];
+
+			if (dim_index == CELL_GEOMETRY_COLUMN_INDEX) {
+				need_geometry = true;
+				break;
+			}
 		}
 
 		// For each cell in the tile, evaluate the filter expressions and fill the output chunk.
@@ -1431,7 +1495,7 @@ struct RT_ReadCells {
 				}
 			}
 
-			const std::string geometry_wkt = StringUtil::Format("POINT (%f %f)", ptc.x, ptc.y);
+			const std::string geometry_wkt = need_geometry ? StringUtil::Format("POINT (%f %f)", ptc.x, ptc.y) : "";
 
 			const CellRow cell_row {Value::BIGINT(row_id + i),
 			                        Value::DOUBLE(ptc.x),
@@ -1582,7 +1646,7 @@ struct RT_ReadCells {
 
 	static void Execute(ClientContext &context, TableFunctionInput &input, DataChunk &output) {
 		auto &bind_data = input.bind_data->Cast<RT_Read::BindData>();
-		auto &gstate = input.global_state->Cast<RT_Read::State>();
+		auto &gstate = input.global_state->Cast<CellState>();
 
 		// If we've already read all the rows/cells, return an empty chunk to indicate we're done.
 		const idx_t start_row = bind_data.row_offset + gstate.current_row;
@@ -1610,7 +1674,7 @@ struct RT_ReadCells {
 
 		// Loop over the tiles and fill the output chunk, it reuses DataCubes for avoiding repeated memory allocations.
 
-		DataCube data_cube(Allocator::Get(context));
+		CellDataCube &data_cube = gstate.data_cube;
 
 		for (int32_t tile_y = start_ty; tile_y < tiles_y && output_size < vector_size; ++tile_y) {
 			const int32_t first_tx = (tile_y == start_ty) ? start_tx : 0;
@@ -1618,9 +1682,13 @@ struct RT_ReadCells {
 			for (int32_t tile_x = first_tx; tile_x < tiles_x && output_size < vector_size; ++tile_x) {
 				const int32_t max_output = vector_size - output_size;
 
+				// fprintf(stderr, "-> Processing tile_x=%d, tile_y=%d, row_id=%" PRIu64 "\n", tile_x, tile_y, row_id);
+
 				// Process cells in one tile.
 				OutputResult result =
 				    FillOutput(bind_data, row_id, output_size, max_output, tile_x, tile_y, data_cube, output);
+
+				// fprintf(stderr, "-> Accepted=%ld, Processed=%ld\n", result.accepted, result.processed);
 
 				output_size += result.accepted;
 				row_id += result.processed;
@@ -1692,14 +1760,13 @@ struct RT_ReadCells {
 
 		TableFunctionSet function_set("RT_ReadCells");
 
-		TableFunction func_01("RT_ReadCells", {LogicalType::VARCHAR}, Execute, BindUniqueFile, RT_Read::Init);
+		TableFunction func_01("RT_ReadCells", {LogicalType::VARCHAR}, Execute, BindUniqueFile, Init);
 		func_01.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
 		func_01.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
 		func_01.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
 		func_01.named_parameters["ignore_nodata"] = LogicalType::INTEGER;
 
-		TableFunction func_02("RT_ReadCells", {LogicalType::LIST(LogicalType::VARCHAR)}, Execute, BindMultiFile,
-		                      RT_Read::Init);
+		TableFunction func_02("RT_ReadCells", {LogicalType::LIST(LogicalType::VARCHAR)}, Execute, BindMultiFile, Init);
 		func_02.named_parameters["separate_bands"] = LogicalType::BOOLEAN;
 		func_02.named_parameters["ignore_nodata"] = LogicalType::INTEGER;
 
