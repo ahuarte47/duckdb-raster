@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(sqlite3 C)
+project(sqlite3 C CXX)
 
 option(WITH_ZLIB "Build sqlite3 with zlib support" OFF)
 option(SQLITE3_SKIP_TOOLS "Disable build sqlite3 executable" OFF)
@@ -20,11 +20,9 @@ target_compile_definitions(
         $<$<CONFIG:Debug>:SQLITE_ENABLE_WHERETRACE>
         $<$<COMPILE_LANGUAGE:RC>:RC_VERONLY>
 
-        # (DuckDB): Dont remember why this was needed
+        # DuckDB needs these SQLite features for PROJ's in-memory VFS.
         SQLITE_ENABLE_COLUMN_METADATA=1
-        # (DuckDB): Enable the use of URI filenames (required for MemVFS)
         SQLITE_USE_URI=1
-        # (DuckDB): Use only memory for temporary storage
         SQLITE_TEMP_STORE=3
 )
 
@@ -45,7 +43,7 @@ if (NOT WIN32)
     endforeach()
 
     if(SQLITE_ENABLE_FTS5 OR SQLITE_ENABLE_MATH_FUNCTIONS)
-        find_library(HAVE_LIBM m)
+        find_library(HAVE_LIBM m PATHS ${CMAKE_C_IMPLICIT_LINK_DIRECTORIES} ${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES})
         if(HAVE_LIBM)
             target_link_libraries(sqlite3 PRIVATE m)
             string(APPEND PKGCONFIG_LIBS_PRIVATE " -lm")
@@ -63,8 +61,7 @@ endif()
 if(NOT SQLITE3_SKIP_TOOLS)
     add_executable(sqlite3-bin shell.c)
     set_target_properties(sqlite3-bin PROPERTIES
-        OUTPUT_NAME sqlite3
-        PDB_NAME "sqlite3${CMAKE_EXECUTABLE_SUFFIX}.pdb"
+        RUNTIME_OUTPUT_NAME sqlite3
     )
 
     target_link_libraries(sqlite3-bin PRIVATE sqlite3)
@@ -74,7 +71,12 @@ if(NOT SQLITE3_SKIP_TOOLS)
         target_compile_definitions(sqlite3-bin PRIVATE SQLITE_HAVE_ZLIB)
     endif()
 
-    install(TARGETS sqlite3-bin sqlite3
+    find_library(HAVE_LIBM m PATHS ${CMAKE_C_IMPLICIT_LINK_DIRECTORIES} ${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES})
+    if(HAVE_LIBM)
+        target_link_libraries(sqlite3-bin PRIVATE m)
+    endif()
+
+    install(TARGETS sqlite3-bin
       RUNTIME DESTINATION bin
       LIBRARY DESTINATION lib
       ARCHIVE DESTINATION lib
