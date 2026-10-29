@@ -20,16 +20,16 @@ public:
 
 	//! Open a GDAL dataset from a list of file names and named parameters.
 	static GDALDataset *OpenDataset(ClientContext &context, const std::vector<std::string> &file_names,
-	                                const named_parameter_map_t &params);
+	                                const named_argument_map_t &params);
 
 	//! Warp a GDAL dataset from a list of file names and named parameters.
 	static GDALDataset *WarpDataset(ClientContext &context, const std::vector<std::string> &file_names,
-	                                const named_parameter_map_t &params,
+	                                const named_argument_map_t &params,
 	                                std::vector<GDALDatasetUniquePtr> &child_datasets);
 
 	//! Create a GDAL dataset given a file name and named parameters.
 	static GDALDataset *CreateDataset(ClientContext &context, const std::string &file_name,
-	                                  const named_parameter_map_t &params);
+	                                  const named_argument_map_t &params);
 };
 
 } // namespace duckdb

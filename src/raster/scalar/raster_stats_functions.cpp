@@ -7,8 +7,6 @@
 // DuckDB
 #include "duckdb.hpp"
 #include "duckdb/common/types/geometry.hpp"
-#include "duckdb/catalog/catalog_entry/function_entry.hpp"
-#include "duckdb/function/scalar_function.hpp"
 
 // GEOS
 #include "geos_c.h"
@@ -185,16 +183,12 @@ struct RT_Stats {
 
 		//! Compute the statistics as a DuckDB Value.
 		Value ToValue() const {
-			Value value = Value::STRUCT({{"minimum", Value::DOUBLE(valid_count > 0 ? min_val : 0.0)},
-			                             {"maximum", Value::DOUBLE(valid_count > 0 ? max_val : 0.0)},
-			                             {"sum", Value::DOUBLE(sum)},
-			                             {"mean", Value::DOUBLE(mean)},
-			                             {"stddev", Value::DOUBLE(valid_count > 0 ? std::sqrt(m2 / valid_count) : 0.0)},
-			                             {"valid_count", Value::BIGINT(valid_count)},
-			                             {"nodata_count", Value::BIGINT(nodata_count)}});
-
-			value.Reinterpret(RasterTypes::STATS());
-			return value;
+			return Value::STRUCT(RasterTypes::STATS(),
+			                     {Value::DOUBLE(valid_count > 0 ? min_val : 0.0),
+			                      Value::DOUBLE(valid_count > 0 ? max_val : 0.0), Value::DOUBLE(sum),
+			                      Value::DOUBLE(mean),
+			                      Value::DOUBLE(valid_count > 0 ? std::sqrt(m2 / valid_count) : 0.0),
+			                      Value::BIGINT(valid_count), Value::BIGINT(nodata_count)});
 		}
 	};
 
@@ -360,7 +354,7 @@ struct RT_Stats {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| `databand` | DATACUBE | The datacube column to compute statistics for. |
+		| `datacube` | DATACUBE | The datacube column to compute statistics for. |
 		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 
 		To compute statistics for a specific band of a datacube, but only for those valid (non-nodata)
@@ -368,7 +362,7 @@ struct RT_Stats {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| `databand` | DATACUBE | The datacube column to compute statistics for. |
+		| `datacube` | DATACUBE | The datacube column to compute statistics for. |
 		| `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 		| `tile_x` | INTEGER | The tile x coordinate of the tile. |
 		| `tile_y` | INTEGER | The tile y coordinate of the tile. |
@@ -377,8 +371,8 @@ struct RT_Stats {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		SELECT RT_CubeStats(databand, 0) AS stats FROM RT_Read('some/file/path/filename.tif');
-		SELECT RT_CubeStats(databand, 0, tile_x, tile_y, metadata, geometry) AS stats FROM RT_Read('some/file/path/filename.tif');
+		SELECT RT_CubeStats(databand_1, 0) AS stats FROM RT_Read('some/file/path/filename.tif');
+		SELECT RT_CubeStats(databand_1, 0, tile_x, tile_y, metadata, geometry) AS stats FROM RT_Read('some/file/path/filename.tif');
 	)";
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -386,26 +380,32 @@ struct RT_Stats {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
-		ScalarFunctionSet function_set("RT_CubeStats");
-
-		const ScalarFunction func01 =
-		    ScalarFunction({RasterTypes::DATACUBE(), LogicalType::INTEGER}, RasterTypes::STATS(), Execute);
-
-		function_set.AddFunction(func01);
-
-		const ScalarFunction func02 =
-		    ScalarFunction({RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::INTEGER,
-		                    LogicalType::JSON(), LogicalType::GEOMETRY()},
-		                   RasterTypes::STATS(), ExecuteGeom, nullptr, nullptr, nullptr, InitLocal);
-
-		function_set.AddFunction(func02);
-
-		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
-		                                    EXAMPLE, tags);
+		FunctionBuilder::RegisterScalar(loader, "RT_CubeStats", [](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.SetReturnType(RasterTypes::STATS());
+				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("tile_x", LogicalType::INTEGER);
+				variant.AddParameter("tile_y", LogicalType::INTEGER);
+				variant.AddParameter("metadata", LogicalType::JSON());
+				variant.AddParameter("geometry", LogicalType::GEOMETRY());
+				variant.SetInit(InitLocal);
+				variant.SetReturnType(RasterTypes::STATS());
+				variant.SetFunction(ExecuteGeom);
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 
@@ -448,11 +448,11 @@ struct RT_Stats_Agg {
 			//	ARG2_TYPE = int32_t  (band)
 
 			UnifiedVectorFormat state_data;
-			input_states.ToUnifiedFormat(count, state_data);
+			input_states.ToUnifiedFormat(state_data);
 
 			UnifiedVectorFormat input_data[2];
 			for (idx_t j = 0; j < 2; j++) {
-				inputs[j].ToUnifiedFormat(count, input_data[j]);
+				inputs[j].ToUnifiedFormat(input_data[j]);
 			}
 
 			auto states = UnifiedVectorFormat::GetData<data_ptr_t>(state_data);
@@ -512,12 +512,6 @@ struct RT_Stats_Agg {
 			}
 		}
 
-		static void SimpleUpdate(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count,
-		                         data_ptr_t state_p, idx_t count) {
-			Vector states(Value::POINTER(CastPointerToValue(state_p)));
-			ScatterUpdate(inputs, aggr_input_data, input_count, states, count);
-		}
-
 		static void ScatterUpdateGeom(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count,
 		                              Vector &input_states, idx_t count) {
 			D_ASSERT(input_count == 6);
@@ -531,11 +525,11 @@ struct RT_Stats_Agg {
 			//	ARG6_TYPE = GEOMETRY (geometry)
 
 			UnifiedVectorFormat state_data;
-			input_states.ToUnifiedFormat(count, state_data);
+			input_states.ToUnifiedFormat(state_data);
 
 			UnifiedVectorFormat input_data[6];
 			for (idx_t j = 0; j < 6; j++) {
-				inputs[j].ToUnifiedFormat(count, input_data[j]);
+				inputs[j].ToUnifiedFormat(input_data[j]);
 			}
 
 			auto states = UnifiedVectorFormat::GetData<data_ptr_t>(state_data);
@@ -642,12 +636,6 @@ struct RT_Stats_Agg {
 			}
 		}
 
-		static void SimpleUpdateGeom(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count,
-		                             data_ptr_t state_p, idx_t count) {
-			Vector states(Value::POINTER(CastPointerToValue(state_p)));
-			ScatterUpdateGeom(inputs, aggr_input_data, input_count, states, count);
-		}
-
 		template <class STATE>
 		static void Finalize(STATE &state, AggregateFinalizeData &finalize_data) {
 			//! Produce the final result.
@@ -711,34 +699,35 @@ struct RT_Stats_Agg {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "aggregate");
+		FunctionBuilder::RegisterAggregate(loader, "RT_CubeStats_Agg", [](AggregateFunctionBuilder &func) {
+			//
+			const AggregateFunction func01("RT_CubeStats_Agg", {RasterTypes::DATACUBE(), LogicalType::INTEGER},
+			                               RasterTypes::STATS(), AggregateFunction::StateSize<FunctionAggState>,
+			                               AggregateFunction::StateInitialize<FunctionAggState, FunctionAggOp>,
+			                               FunctionAggOp::ScatterUpdate,
+			                               AggregateFunction::StateCombine<FunctionAggState, FunctionAggOp>,
+			                               AggregateFunction::StateVoidFinalize<FunctionAggState, FunctionAggOp>,
+			                               AggregateFunction::NoClusterUpdate());
 
-		AggregateFunctionSet function_set("RT_CubeStats_Agg");
+			func.SetFunction(func01);
 
-		const AggregateFunction func01(
-		    "RT_CubeStats_Agg", {RasterTypes::DATACUBE(), LogicalType::INTEGER}, RasterTypes::STATS(),
-		    AggregateFunction::StateSize<FunctionAggState>,
-		    AggregateFunction::StateInitialize<FunctionAggState, FunctionAggOp>, FunctionAggOp::ScatterUpdate,
-		    AggregateFunction::StateCombine<FunctionAggState, FunctionAggOp>,
-		    AggregateFunction::StateVoidFinalize<FunctionAggState, FunctionAggOp>, FunctionAggOp::SimpleUpdate);
+			const AggregateFunction func02("RT_CubeStats_Agg",
+			                               {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
+			                                LogicalType::INTEGER, LogicalType::JSON(), LogicalType::GEOMETRY()},
+			                               RasterTypes::STATS(), AggregateFunction::StateSize<FunctionAggState>,
+			                               AggregateFunction::StateInitialize<FunctionAggState, FunctionAggOp>,
+			                               FunctionAggOp::ScatterUpdateGeom,
+			                               AggregateFunction::StateCombine<FunctionAggState, FunctionAggOp>,
+			                               AggregateFunction::StateVoidFinalize<FunctionAggState, FunctionAggOp>,
+			                               AggregateFunction::NoClusterUpdate());
 
-		function_set.AddFunction(func01);
+			func.SetFunction(func02);
 
-		const AggregateFunction func02(
-		    "RT_CubeStats_Agg",
-		    {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::INTEGER,
-		     LogicalType::JSON(), LogicalType::GEOMETRY()},
-		    RasterTypes::STATS(), AggregateFunction::StateSize<FunctionAggState>,
-		    AggregateFunction::StateInitialize<FunctionAggState, FunctionAggOp>, FunctionAggOp::ScatterUpdateGeom,
-		    AggregateFunction::StateCombine<FunctionAggState, FunctionAggOp>,
-		    AggregateFunction::StateVoidFinalize<FunctionAggState, FunctionAggOp>, FunctionAggOp::SimpleUpdateGeom);
-
-		function_set.AddFunction(func02);
-
-		RegisterFunction<AggregateFunctionSet>(loader, function_set, CatalogType::AGGREGATE_FUNCTION_ENTRY, DESCRIPTION,
-		                                       EXAMPLE, tags);
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "aggregate");
+		});
 	}
 };
 
@@ -813,7 +802,7 @@ struct RT_RasterStats {
 						                   {"valid_count", Value()},
 						                   {"nodata_count", Value()}});
 
-						value.Reinterpret(RasterTypes::STATS());
+						value = value.WithType(RasterTypes::STATS());
 						result.SetValue(i, value);
 						continue;
 					}
@@ -966,46 +955,58 @@ struct RT_RasterStats {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
-		ScalarFunctionSet function_set("RT_Stats");
-
-		ScalarFunction function_01 =
-		    ScalarFunction({LogicalType::VARCHAR, LogicalType::INTEGER}, RasterTypes::STATS(), Execute);
-
-		function_01.SetVolatile();
-		function_set.AddFunction(function_01);
-
-		ScalarFunction function_02 = ScalarFunction({LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER},
-		                                            RasterTypes::STATS(), Execute);
-
-		function_02.SetVolatile();
-		function_set.AddFunction(function_02);
-
-		ScalarFunction function_03 =
-		    ScalarFunction({LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::GEOMETRY()}, RasterTypes::STATS(),
-		                   ExecuteGeom, nullptr, nullptr, nullptr, InitLocal);
-
-		function_03.SetVolatile();
-		function_set.AddFunction(function_03);
-
-		ScalarFunction function_04 =
-		    ScalarFunction({LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER, LogicalType::GEOMETRY()},
-		                   RasterTypes::STATS(), ExecuteGeom, nullptr, nullptr, nullptr, InitLocal);
-
-		function_04.SetVolatile();
-		function_set.AddFunction(function_04);
-
-		ScalarFunction function_05 = ScalarFunction({LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::BOOLEAN},
-		                                            RasterTypes::STATS(), Execute);
-
-		function_05.SetVolatile();
-		function_set.AddFunction(function_05);
-
-		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
-		                                    EXAMPLE, tags);
+		FunctionBuilder::RegisterScalar(loader, "RT_Stats", [](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.SetReturnType(RasterTypes::STATS());
+				variant.SetFunction(Execute);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("geometry", LogicalType::GEOMETRY());
+				variant.SetInit(InitLocal);
+				variant.SetReturnType(RasterTypes::STATS());
+				variant.SetFunction(ExecuteGeom);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.SetReturnType(RasterTypes::STATS());
+				variant.SetFunction(Execute);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("geometry", LogicalType::GEOMETRY());
+				variant.SetInit(InitLocal);
+				variant.SetReturnType(RasterTypes::STATS());
+				variant.SetFunction(ExecuteGeom);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("approx_stats", LogicalType::BOOLEAN);
+				variant.SetReturnType(RasterTypes::STATS());
+				variant.SetFunction(Execute);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 

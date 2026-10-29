@@ -2,6 +2,7 @@
 
 // DuckDB
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/numeric_utils.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
 
 // Compression libraries (Snappy, GZIP, ZSTD, LZ4)

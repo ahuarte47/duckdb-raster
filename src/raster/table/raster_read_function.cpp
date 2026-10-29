@@ -102,7 +102,7 @@ struct RT_Read {
 
 	struct BindData final : TableFunctionData {
 		std::vector<std::string> file_names;
-		named_parameter_map_t parameters;
+		named_argument_map_t parameters;
 		DataFormat::Value data_format = DataFormat::Value::RAW;
 		bool skip_empty_tiles = true;
 		IGNORE_CELLS ignore_cells = IGNORE_CELLS::NEVER;
@@ -142,7 +142,7 @@ struct RT_Read {
 	};
 
 	static unique_ptr<FunctionData> BindUniqueFile(ClientContext &context, TableFunctionBindInput &input,
-	                                               vector<LogicalType> &return_types, vector<string> &names) {
+	                                               vector<LogicalType> &return_types, vector<Identifier> &names) {
 		std::vector<std::string> file_names;
 
 		const auto file_path = input.inputs[0].GetValue<std::string>();
@@ -161,7 +161,7 @@ struct RT_Read {
 	}
 
 	static unique_ptr<FunctionData> BindMultiFile(ClientContext &context, TableFunctionBindInput &input,
-	                                              vector<LogicalType> &return_types, vector<string> &names) {
+	                                              vector<LogicalType> &return_types, vector<Identifier> &names) {
 		std::vector<std::string> file_names;
 
 		if (input.inputs.empty()) {
@@ -183,7 +183,7 @@ struct RT_Read {
 	}
 
 	static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
-	                                     vector<LogicalType> &return_types, vector<string> &names,
+	                                     vector<LogicalType> &return_types, vector<Identifier> &names,
 	                                     const std::vector<std::string> &file_names) {
 		if (file_names.empty()) {
 			throw InvalidInputException("No input files provided.");
@@ -473,11 +473,11 @@ struct RT_Read {
 			for (auto &expr : bind_data.filter_expressions) {
 				ExpressionIterator::VisitExpressionMutable<BoundReferenceExpression>(
 				    expr, [&table_col_to_position](BoundReferenceExpression &bound_ref, unique_ptr<Expression> &) {
-					    const auto entry = table_col_to_position.find(bound_ref.index);
+					    const auto entry = table_col_to_position.find(bound_ref.Index());
 					    if (entry == table_col_to_position.end()) {
 						    throw InternalException("Filter column was pruned from the projected columns");
 					    }
-					    bound_ref.index = entry->second;
+					    bound_ref.IndexMutable() = entry->second;
 				    });
 			}
 		}
@@ -525,8 +525,8 @@ struct RT_Read {
 				if (child->type == LogicalOperatorType::LOGICAL_GET) {
 					auto &get = child->Cast<LogicalGet>();
 
-					if (StringUtil::Lower(get.function.name) == "rt_read" ||
-					    StringUtil::Lower(get.function.name) == "rt_readcells") {
+					if (StringUtil::Lower(get.function.GetName().GetIdentifierName()) == "rt_read" ||
+					    StringUtil::Lower(get.function.GetName().GetIdentifierName()) == "rt_readcells") {
 						auto &bind_data = get.bind_data->Cast<BindData>();
 
 						if (limit.offset_val.Type() == LimitNodeType::CONSTANT_VALUE) {
@@ -584,7 +584,7 @@ struct RT_Read {
 				    [&do_pushdown, &column_ids](unique_ptr<Expression> &child) {
 					    if (do_pushdown) {
 						    const auto &col_ref = child->Cast<BoundColumnRefExpression>();
-						    const auto &type_id = col_ref.return_type.id();
+						    const auto &type_id = col_ref.GetReturnType().id();
 
 						    // If filter expressions reference BLOBs, we totally delegate the filter to DuckDB.
 						    if (type_id == LogicalTypeId::BLOB || type_id == RasterTypes::DATACUBE().id()) {
@@ -593,8 +593,8 @@ struct RT_Read {
 						    }
 
 						    const auto &column_alias = col_ref.GetAlias();
-						    const auto &return_type = col_ref.return_type;
-						    const idx_t table_col = column_ids[col_ref.binding.column_index].GetPrimaryIndex();
+						    const auto &return_type = col_ref.GetReturnType();
+						    const idx_t table_col = column_ids[col_ref.Binding().column_index].GetPrimaryIndex();
 						    child = make_uniq<BoundReferenceExpression>(column_alias, return_type, table_col);
 					    }
 				    });
@@ -680,8 +680,7 @@ struct RT_Read {
 		const double x_max = MaxValue<double>(MaxValue<double>(pt0.x, pt1.x), MaxValue<double>(pt2.x, pt3.x));
 		const double y_max = MaxValue<double>(MaxValue<double>(pt0.y, pt1.y), MaxValue<double>(pt2.y, pt3.y));
 
-		Value bbox = Value::STRUCT({{"xmin", x_min}, {"ymin", y_min}, {"x_max", x_max}, {"ymax", y_max}});
-		bbox.Reinterpret(RasterTypes::BBOX());
+		Value bbox = Value::STRUCT(RasterTypes::BBOX(), {x_min, y_min, x_max, y_max});
 
 		const std::string geometry_wkt =
 		    StringUtil::Format("POLYGON ((%f %f, %f %f, %f %f, %f %f, %f %f))", pt0.x, pt0.y, pt1.x, pt1.y, pt2.x,
@@ -818,7 +817,7 @@ struct RT_Read {
 		// If we've already read all the rows/tiles, return an empty chunk to indicate we're done.
 		const idx_t start_row = bind_data.row_offset + gstate.current_row;
 		if (start_row >= bind_data.row_count) {
-			output.SetCardinality(0);
+			output.SetChildCardinality(0);
 			return;
 		}
 
@@ -855,7 +854,7 @@ struct RT_Read {
 		gstate.current_row = (row_id - bind_data.row_offset);
 
 		// Set the cardinality of the output.
-		output.SetCardinality(output_size);
+		output.SetChildCardinality(output_size);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -872,7 +871,7 @@ struct RT_Read {
 		    StringUtil::EndsWith(lower_name, ".tif") || StringUtil::EndsWith(lower_name, ".vrt")) {
 			auto table_function = make_uniq<TableFunctionRef>();
 			vector<unique_ptr<ParsedExpression>> children;
-			children.push_back(make_uniq<ConstantExpression>(Value(table_name)));
+			children.push_back(ConstantExpression::FromValue(Value(table_name)));
 			table_function->function = make_uniq<FunctionExpression>("RT_Read", std::move(children));
 
 			return std::move(table_function);
@@ -966,35 +965,42 @@ struct RT_Read {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "table");
+		TableFunctionSet function_set("RT_Read");
+
+		// Common optional parameters
+
+		auto add_common_options = [](TypedKwargs &options) {
+			options.Add("warp_options", LogicalType::LIST(LogicalType::VARCHAR))
+			    .Add("data_format", LogicalType::VARCHAR)
+			    .Add("blocksize_x", LogicalType::INTEGER)
+			    .Add("blocksize_y", LogicalType::INTEGER)
+			    .Add("skip_empty_tiles", LogicalType::BOOLEAN)
+			    .Add("datacube", LogicalType::BOOLEAN);
+		};
 
 		// Configure the functions and register them in the function set.
 
-		TableFunctionSet function_set("RT_Read");
+		FunctionSignature signature_01;
+		signature_01.AddParameter("file_path", LogicalType::VARCHAR)
+		    .WithTypedKwargs("options", [&](TypedKwargs &options) {
+			    options.Add("open_options", LogicalType::LIST(LogicalType::VARCHAR))
+			        .Add("allowed_drivers", LogicalType::LIST(LogicalType::VARCHAR))
+			        .Add("sibling_files", LogicalType::LIST(LogicalType::VARCHAR));
+			    add_common_options(options);
+		    });
+		TableFunction func_01("RT_Read", std::move(signature_01), Execute, BindUniqueFile, Init);
 
-		TableFunction func_01("RT_Read", {LogicalType::VARCHAR}, Execute, BindUniqueFile, Init);
-		func_01.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
-		func_01.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
-		func_01.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
-
-		TableFunction func_02("RT_Read", {LogicalType::LIST(LogicalType::VARCHAR)}, Execute, BindMultiFile, Init);
-		func_02.named_parameters["separate_bands"] = LogicalType::BOOLEAN;
+		FunctionSignature signature_02;
+		signature_02.AddParameter("file_paths", LogicalType::LIST(LogicalType::VARCHAR))
+		    .WithTypedKwargs("options", [&](TypedKwargs &options) {
+			    options.Add("separate_bands", LogicalType::BOOLEAN);
+			    add_common_options(options);
+		    });
+		TableFunction func_02("RT_Read", std::move(signature_02), Execute, BindMultiFile, Init);
 
 		for (auto *func : {&func_01, &func_02}) {
 			func->cardinality = Cardinality;
 			func->table_scan_progress = Progress;
-
-			// Common warp optional parameters
-			func->named_parameters["warp_options"] = LogicalType::LIST(LogicalType::VARCHAR);
-
-			// Common optional parameters
-			func->named_parameters["data_format"] = LogicalType::VARCHAR;
-			func->named_parameters["blocksize_x"] = LogicalType::INTEGER;
-			func->named_parameters["blocksize_y"] = LogicalType::INTEGER;
-			func->named_parameters["skip_empty_tiles"] = LogicalType::BOOLEAN;
-			func->named_parameters["datacube"] = LogicalType::BOOLEAN;
 
 			// Enable projection pushdown - allows DuckDB to tell us which columns are needed
 			// The column_ids will be passed to InitGlobal via TableFunctionInitInput
@@ -1007,8 +1013,12 @@ struct RT_Read {
 			function_set.AddFunction(*func);
 		}
 
-		RegisterFunction<TableFunctionSet>(loader, function_set, CatalogType::TABLE_FUNCTION_ENTRY, DESCRIPTION,
-		                                   EXAMPLE, tags);
+		loader.RegisterFunction(std::move(function_set));
+
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "table");
+		FunctionBuilder::AddTableFunctionDocs(loader, "RT_Read", DESCRIPTION, EXAMPLE, tags);
 
 		// Replacement scan
 		auto &db = loader.GetDatabaseInstance();
@@ -1058,7 +1068,7 @@ struct RT_ReadCells {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static unique_ptr<FunctionData> BindUniqueFile(ClientContext &context, TableFunctionBindInput &input,
-	                                               vector<LogicalType> &return_types, vector<string> &names) {
+	                                               vector<LogicalType> &return_types, vector<Identifier> &names) {
 		std::vector<std::string> file_names;
 
 		const auto file_path = input.inputs[0].GetValue<std::string>();
@@ -1077,7 +1087,7 @@ struct RT_ReadCells {
 	}
 
 	static unique_ptr<FunctionData> BindMultiFile(ClientContext &context, TableFunctionBindInput &input,
-	                                              vector<LogicalType> &return_types, vector<string> &names) {
+	                                              vector<LogicalType> &return_types, vector<Identifier> &names) {
 		std::vector<std::string> file_names;
 
 		if (input.inputs.empty()) {
@@ -1099,7 +1109,7 @@ struct RT_ReadCells {
 	}
 
 	static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
-	                                     vector<LogicalType> &return_types, vector<string> &names,
+	                                     vector<LogicalType> &return_types, vector<Identifier> &names,
 	                                     std::vector<std::string> &file_names) {
 		if (file_names.empty()) {
 			throw InvalidInputException("No input files provided.");
@@ -1651,7 +1661,7 @@ struct RT_ReadCells {
 		// If we've already read all the rows/cells, return an empty chunk to indicate we're done.
 		const idx_t start_row = bind_data.row_offset + gstate.current_row;
 		if (start_row >= bind_data.row_count) {
-			output.SetCardinality(0);
+			output.SetChildCardinality(0);
 			return;
 		}
 
@@ -1699,7 +1709,7 @@ struct RT_ReadCells {
 		gstate.current_row = (row_id - bind_data.row_offset);
 
 		// Set the cardinality of the output.
-		output.SetCardinality(output_size);
+		output.SetChildCardinality(output_size);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -1752,36 +1762,42 @@ struct RT_ReadCells {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "table");
+		TableFunctionSet function_set("RT_ReadCells");
+
+		// Common optional parameters
+
+		auto add_common_options = [](TypedKwargs &options) {
+			options.Add("x_min", LogicalType::DOUBLE)
+			    .Add("y_min", LogicalType::DOUBLE)
+			    .Add("x_max", LogicalType::DOUBLE)
+			    .Add("y_max", LogicalType::DOUBLE)
+			    .Add("warp_options", LogicalType::LIST(LogicalType::VARCHAR));
+		};
 
 		// Configure the functions and register them in the function set.
 
-		TableFunctionSet function_set("RT_ReadCells");
+		FunctionSignature signature_01;
+		signature_01.AddParameter("filepath", LogicalType::VARCHAR)
+		    .WithTypedKwargs("options", [&](TypedKwargs &options) {
+			    options.Add("open_options", LogicalType::LIST(LogicalType::VARCHAR))
+			        .Add("allowed_drivers", LogicalType::LIST(LogicalType::VARCHAR))
+			        .Add("sibling_files", LogicalType::LIST(LogicalType::VARCHAR))
+			        .Add("ignore_nodata", LogicalType::INTEGER);
+			    add_common_options(options);
+		    });
+		TableFunction func_01("RT_ReadCells", std::move(signature_01), Execute, BindUniqueFile, Init);
 
-		TableFunction func_01("RT_ReadCells", {LogicalType::VARCHAR}, Execute, BindUniqueFile, Init);
-		func_01.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
-		func_01.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
-		func_01.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
-		func_01.named_parameters["ignore_nodata"] = LogicalType::INTEGER;
-
-		TableFunction func_02("RT_ReadCells", {LogicalType::LIST(LogicalType::VARCHAR)}, Execute, BindMultiFile, Init);
-		func_02.named_parameters["separate_bands"] = LogicalType::BOOLEAN;
-		func_02.named_parameters["ignore_nodata"] = LogicalType::INTEGER;
+		FunctionSignature signature_02;
+		signature_02.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR))
+		    .WithTypedKwargs("options", [&](TypedKwargs &options) {
+			    options.Add("separate_bands", LogicalType::BOOLEAN).Add("ignore_nodata", LogicalType::INTEGER);
+			    add_common_options(options);
+		    });
+		TableFunction func_02("RT_ReadCells", std::move(signature_02), Execute, BindMultiFile, Init);
 
 		for (auto *func : {&func_01, &func_02}) {
 			func->cardinality = RT_Read::Cardinality;
 			func->table_scan_progress = RT_Read::Progress;
-
-			// Bounding box (BBOX) for spatial pre-filtering
-			func->named_parameters["x_min"] = LogicalType::DOUBLE;
-			func->named_parameters["y_min"] = LogicalType::DOUBLE;
-			func->named_parameters["x_max"] = LogicalType::DOUBLE;
-			func->named_parameters["y_max"] = LogicalType::DOUBLE;
-
-			// Common warp optional parameters
-			func->named_parameters["warp_options"] = LogicalType::LIST(LogicalType::VARCHAR);
 
 			// Enable projection pushdown - allows DuckDB to tell us which columns are needed
 			// The column_ids will be passed to InitGlobal via TableFunctionInitInput
@@ -1794,8 +1810,12 @@ struct RT_ReadCells {
 			function_set.AddFunction(*func);
 		}
 
-		RegisterFunction<TableFunctionSet>(loader, function_set, CatalogType::TABLE_FUNCTION_ENTRY, DESCRIPTION,
-		                                   EXAMPLE, tags);
+		loader.RegisterFunction(std::move(function_set));
+
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "table");
+		FunctionBuilder::AddTableFunctionDocs(loader, "RT_ReadCells", DESCRIPTION, EXAMPLE, tags);
 
 		auto &db = loader.GetDatabaseInstance();
 		auto &config = DBConfig::GetConfig(db);
@@ -1817,7 +1837,7 @@ struct RT_Create : public RT_Read {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static unique_ptr<FunctionData> BindCreate(ClientContext &context, TableFunctionBindInput &input,
-	                                           vector<LogicalType> &return_types, vector<string> &names) {
+	                                           vector<LogicalType> &return_types, vector<Identifier> &names) {
 		const auto file_path = input.inputs[0].GetValue<std::string>();
 		auto &params = input.named_parameters;
 
@@ -1857,10 +1877,10 @@ struct RT_Create : public RT_Read {
 		| --------- | -----| ----------- |
 		| `path` | VARCHAR | The path to the file to create. |
 		| `crs` | VARCHAR | The coordinate reference system (CRS) of the raster dataset, specified as an EPSG code (e.g., 'EPSG:4326') or a WKT string. |
-		| `min_x` | DOUBLE | The minimum X coordinate (left) of the raster extent. |
-		| `min_y` | DOUBLE | The minimum Y coordinate (bottom) of the raster extent. |
-		| `max_x` | DOUBLE | The maximum X coordinate (right) of the raster extent. |
-		| `max_y` | DOUBLE | The maximum Y coordinate (top) of the raster extent. |
+		| `x_min` | DOUBLE | The minimum X coordinate (left) of the raster extent. |
+		| `y_min` | DOUBLE | The minimum Y coordinate (bottom) of the raster extent. |
+		| `x_max` | DOUBLE | The maximum X coordinate (right) of the raster extent. |
+		| `y_max` | DOUBLE | The maximum Y coordinate (top) of the raster extent. |
 		| `width` | INTEGER | The width (number of columns) of the raster dataset. |
 		| `height` | INTEGER | The height (number of rows) of the raster dataset. |
 		| `num_bands` | INTEGER | The number of bands in the raster dataset. |
@@ -1909,30 +1929,35 @@ struct RT_Create : public RT_Read {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "table");
+		TableFunctionSet function_set("RT_Create");
 
 		// Configure the functions and register them in the function set.
 
-		TableFunctionSet function_set("RT_Create");
+		FunctionSignature signature;
+		signature.AddParameter("file_path", LogicalType::VARCHAR)
+		    .AddParameter("crs", LogicalType::VARCHAR)
+		    .AddParameter("x_min", LogicalType::DOUBLE)
+		    .AddParameter("y_min", LogicalType::DOUBLE)
+		    .AddParameter("x_max", LogicalType::DOUBLE)
+		    .AddParameter("y_max", LogicalType::DOUBLE)
+		    .AddParameter("width", LogicalType::INTEGER)
+		    .AddParameter("height", LogicalType::INTEGER)
+		    .AddParameter("num_bands", LogicalType::INTEGER)
+		    .AddParameter("data_type", LogicalType::INTEGER)
+		    .AddParameter("nodata_value", LogicalType::DOUBLE)
+		    .WithTypedKwargs("options", [&](TypedKwargs &options) {
+			    options.Add("driver_name", LogicalType::VARCHAR)
+			        .Add("data_format", LogicalType::VARCHAR)
+			        .Add("blocksize_x", LogicalType::INTEGER)
+			        .Add("blocksize_y", LogicalType::INTEGER)
+			        .Add("datacube", LogicalType::BOOLEAN);
+		    });
 
-		TableFunction func_01("RT_Create",
-		                      {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::DOUBLE, LogicalType::DOUBLE,
-		                       LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::INTEGER, LogicalType::INTEGER,
-		                       LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::DOUBLE},
-		                      Execute, BindCreate, Init);
+		TableFunction func_01("RT_Create", std::move(signature), Execute, BindCreate, Init);
 
 		for (auto *func : {&func_01}) {
 			func->cardinality = Cardinality;
 			func->table_scan_progress = Progress;
-
-			// Common optional parameters
-			func->named_parameters["driver_name"] = LogicalType::VARCHAR;
-			func->named_parameters["data_format"] = LogicalType::VARCHAR;
-			func->named_parameters["blocksize_x"] = LogicalType::INTEGER;
-			func->named_parameters["blocksize_y"] = LogicalType::INTEGER;
-			func->named_parameters["datacube"] = LogicalType::BOOLEAN;
 
 			// Enable projection pushdown - allows DuckDB to tell us which columns are needed
 			// The column_ids will be passed to InitGlobal via TableFunctionInitInput
@@ -1945,8 +1970,12 @@ struct RT_Create : public RT_Read {
 			function_set.AddFunction(*func);
 		}
 
-		RegisterFunction<TableFunctionSet>(loader, function_set, CatalogType::TABLE_FUNCTION_ENTRY, DESCRIPTION,
-		                                   EXAMPLE, tags);
+		loader.RegisterFunction(std::move(function_set));
+
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "raster");
+		tags.insert("category", "table");
+		FunctionBuilder::AddTableFunctionDocs(loader, "RT_Create", DESCRIPTION, EXAMPLE, tags);
 
 		// Replacement scan
 		auto &db = loader.GetDatabaseInstance();

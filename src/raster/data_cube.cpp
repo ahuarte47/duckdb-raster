@@ -2,6 +2,9 @@
 #include "raster_types.hpp"
 #include "data_format_utils.hpp"
 
+// DuckDB
+#include "duckdb/common/types/value.hpp"
+
 namespace duckdb {
 
 //======================================================================================================================
@@ -134,7 +137,7 @@ void DataCube::LoadBlob(const Value &blob) {
 
 Value DataCube::ToBlob() const {
 	Value blob = Value::BLOB(data_buffer.GetData(), data_buffer.GetPosition());
-	blob.Reinterpret(RasterTypes::DATACUBE());
+	blob = blob.WithType(RasterTypes::DATACUBE());
 	return blob;
 }
 
@@ -290,16 +293,14 @@ Value DataCube::ToArray(const LogicalType &output_type, bool filter_nodata) {
 	}
 
 	// Return a RT_ARRAY struct with the metadata and the data of the tile.
-	Value data = Value::STRUCT({
-	    {"data_type", Value::INTEGER(data_type)},
-	    {"bands", Value::INTEGER(header.bands)},
-	    {"cols", Value::INTEGER(header.cols)},
-	    {"rows", Value::INTEGER(header.rows)},
-	    {"no_data", Value::DOUBLE(header.no_data)},
-	    {"values", Value::LIST(output_type, std::move(data_values))},
-	});
-	data.Reinterpret(RasterTypes::ARRAY(output_type));
-	return data;
+	return Value::STRUCT(RasterTypes::ARRAY(output_type), {
+	                                                          Value::INTEGER(data_type),
+	                                                          Value::INTEGER(header.bands),
+	                                                          Value::INTEGER(header.cols),
+	                                                          Value::INTEGER(header.rows),
+	                                                          Value::DOUBLE(header.no_data),
+	                                                          Value::LIST(output_type, std::move(data_values)),
+	                                                      });
 }
 
 template <typename T>

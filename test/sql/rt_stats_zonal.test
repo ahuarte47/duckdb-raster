@@ -4,8 +4,7 @@
 
 require raster
 
-statement ok
-INSTALL spatial;
+require spatial
 
 statement ok
 LOAD spatial;

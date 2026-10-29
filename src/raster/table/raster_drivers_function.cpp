@@ -31,19 +31,19 @@ struct RT_Drivers {
 	};
 
 	static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
-	                                     vector<LogicalType> &return_types, vector<string> &names) {
-		return_types.emplace_back(LogicalType::VARCHAR);
-		return_types.emplace_back(LogicalType::VARCHAR);
-		return_types.emplace_back(LogicalType::BOOLEAN);
-		return_types.emplace_back(LogicalType::BOOLEAN);
-		return_types.emplace_back(LogicalType::BOOLEAN);
-		return_types.emplace_back(LogicalType::VARCHAR);
+	                                     vector<LogicalType> &return_types, vector<Identifier> &names) {
 		names.emplace_back("short_name");
+		return_types.emplace_back(LogicalType::VARCHAR);
 		names.emplace_back("long_name");
+		return_types.emplace_back(LogicalType::VARCHAR);
 		names.emplace_back("can_create");
+		return_types.emplace_back(LogicalType::BOOLEAN);
 		names.emplace_back("can_copy");
+		return_types.emplace_back(LogicalType::BOOLEAN);
 		names.emplace_back("can_open");
+		return_types.emplace_back(LogicalType::BOOLEAN);
 		names.emplace_back("help_url");
+		return_types.emplace_back(LogicalType::VARCHAR);
 
 		return make_uniq_base<FunctionData, BindData>(GDALGetDriverCount());
 	}
@@ -105,7 +105,7 @@ struct RT_Drivers {
 			output.data[5].SetValue(count, help_topic_value);
 			count++;
 		}
-		output.SetCardinality(count);
+		output.SetChildCardinality(count);
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -127,13 +127,13 @@ struct RT_Drivers {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
+		const TableFunction func("RT_Drivers", {}, Execute, Bind, Init);
+		loader.RegisterFunction(func);
+
 		InsertionOrderPreservingMap<string> tags;
 		tags.insert("ext", "raster");
 		tags.insert("category", "table");
-
-		const TableFunction func("RT_Drivers", {}, Execute, Bind, Init);
-
-		RegisterFunction<TableFunction>(loader, func, CatalogType::TABLE_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE, tags);
+		FunctionBuilder::AddTableFunctionDocs(loader, "RT_Drivers", DESCRIPTION, EXAMPLE, tags);
 	}
 };
 

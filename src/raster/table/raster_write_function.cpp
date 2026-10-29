@@ -82,7 +82,7 @@ struct RT_Write {
 	};
 
 	static unique_ptr<FunctionData> Bind(ClientContext &context, CopyFunctionBindInput &input,
-	                                     const vector<string> &names, const vector<LogicalType> &types) {
+	                                     const vector<Identifier> &names, const vector<LogicalType> &types) {
 		auto file_path = input.info.file_path;
 		auto bind_data = make_uniq<BindData>(file_path);
 
@@ -92,7 +92,7 @@ struct RT_Write {
 		std::vector<std::string> databand_col_names;
 
 		for (auto &option : input.info.options) {
-			std::string key = StringUtil::Upper(option.first);
+			const std::string key = StringUtil::Upper(option.first.GetIdentifierName());
 
 			if (key == "DRIVER") {
 				auto set = option.second.front();
@@ -276,11 +276,11 @@ struct RT_Write {
 
 		std::vector<DataCube> data_cubes;
 
-		input.data[bind_data.geometry_col].Flatten(input.size());
+		input.data[bind_data.geometry_col].Flatten();
 		const string_t *geom_data = FlatVector::GetData<string_t>(input.data[bind_data.geometry_col]);
 
 		for (idx_t band_idx : bind_data.databand_cols) {
-			input.data[band_idx].Flatten(input.size());
+			input.data[band_idx].Flatten();
 			data_cubes.emplace_back(DataCube(Allocator::Get(context.client)));
 		}
 

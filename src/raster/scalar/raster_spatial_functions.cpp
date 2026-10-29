@@ -5,10 +5,8 @@
 
 // DuckDB
 #include "duckdb.hpp"
-#include "duckdb/catalog/catalog_entry/function_entry.hpp"
 #include "duckdb/common/types/geometry.hpp"
 #include "duckdb/execution/expression_executor_state.hpp"
-#include "duckdb/function/scalar_function.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 
 // GEOS
@@ -80,7 +78,7 @@ struct RT_Envelope {
 			if (!arg_cube.GetBounds(band_index, bbox)) {
 				// No valid cells, return NULL geometry.
 				Value geometry_null = Value();
-				geometry_null.Reinterpret(LogicalType::GEOMETRY());
+				geometry_null = geometry_null.WithType(LogicalType::GEOMETRY());
 				result.SetValue(i, geometry_null);
 			} else {
 				int32_t tx = tile_x * blocksize_x;
@@ -110,7 +108,7 @@ struct RT_Envelope {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| `databand` | DATACUBE | The datacube column to polygonize. |
+		| `datacube` | DATACUBE | The datacube column to polygonize. |
 		| `band` | INTEGER | The 0-based index of the band to compute the envelope for. |
 		| `tile_x` | INTEGER | The tile x coordinate of the tile. |
 		| `tile_y` | INTEGER | The tile y coordinate of the tile. |
@@ -135,17 +133,23 @@ struct RT_Envelope {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "spatial");
-
-		ScalarFunction function("RT_Envelope",
-		                        {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
-		                         LogicalType::INTEGER, LogicalType::JSON()},
-		                        LogicalType::GEOMETRY(), Execute, nullptr, nullptr, nullptr);
-
-		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
-		                                 tags);
+		FunctionBuilder::RegisterScalar(loader, "RT_Envelope", [&](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("tile_x", LogicalType::INTEGER);
+				variant.AddParameter("tile_y", LogicalType::INTEGER);
+				variant.AddParameter("metadata", LogicalType::JSON());
+				variant.SetReturnType(LogicalType::GEOMETRY());
+				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "spatial");
+		});
 	}
 };
 
@@ -220,7 +224,7 @@ struct RT_Polygon {
 			// No valid cells, return NULL geometry.
 			if (coords.empty()) {
 				Value geometry_null = Value();
-				geometry_null.Reinterpret(LogicalType::GEOMETRY());
+				geometry_null = geometry_null.WithType(LogicalType::GEOMETRY());
 				return geometry_null;
 			}
 			// All cells are valid, return rectangle polygon for the whole tile.
@@ -266,7 +270,7 @@ struct RT_Polygon {
 			// This should not happen, but just in case, return NULL geometry.
 			if (!polygon_ptr) {
 				Value geometry_null = Value();
-				geometry_null.Reinterpret(LogicalType::GEOMETRY());
+				geometry_null = geometry_null.WithType(LogicalType::GEOMETRY());
 				return geometry_null;
 			}
 
@@ -375,17 +379,24 @@ struct RT_Polygon {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "spatial");
-
-		ScalarFunction function("RT_Polygon",
-		                        {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
-		                         LogicalType::INTEGER, LogicalType::JSON()},
-		                        LogicalType::GEOMETRY(), Execute, nullptr, nullptr, nullptr, InitLocal);
-
-		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
-		                                 tags);
+		FunctionBuilder::RegisterScalar(loader, "RT_Polygon", [&](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("tile_x", LogicalType::INTEGER);
+				variant.AddParameter("tile_y", LogicalType::INTEGER);
+				variant.AddParameter("metadata", LogicalType::JSON());
+				variant.SetInit(InitLocal);
+				variant.SetReturnType(LogicalType::GEOMETRY());
+				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "spatial");
+		});
 	}
 };
 
@@ -498,12 +509,7 @@ struct RT_SpatialOp {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "spatial");
-
 		// Register Spatial functions
-
 		static constexpr std::array<std::tuple<const char *, SpatialOp, const char *>, 2> spatial_ops = {{
 		    {"RT_CubeClip", SpatialOp::CLIP,
 		     "Returns a datacube where cells outside the given geometry are replaced by the specified value. "
@@ -517,17 +523,28 @@ struct RT_SpatialOp {
 			const auto &op = std::get<1>(entry);
 			const auto &description = std::get<2>(entry);
 
-			const auto executor = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+			const auto fn = [op](DataChunk &args, ExpressionState &state, Vector &result) {
 				RT_SpatialOp::Execute(op, args, state, result);
 			};
-			ScalarFunction function =
-			    ScalarFunction(function_name,
-			                   {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
-			                    LogicalType::JSON(), LogicalType::GEOMETRY(), LogicalType::DOUBLE},
-			                   RasterTypes::DATACUBE(), executor, nullptr, nullptr, nullptr, InitLocal);
-
-			RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, description, "",
-			                                 tags);
+			FunctionBuilder::RegisterScalar(loader, function_name, [&](ScalarFunctionBuilder &func) {
+				//
+				func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
+					variant.AddParameter("datacube", RasterTypes::DATACUBE());
+					variant.AddParameter("tile_x", LogicalType::INTEGER);
+					variant.AddParameter("tile_y", LogicalType::INTEGER);
+					variant.AddParameter("metadata", LogicalType::JSON());
+					variant.AddParameter("geometry", LogicalType::GEOMETRY());
+					variant.AddParameter("value", LogicalType::DOUBLE);
+					variant.SetInit(InitLocal);
+					variant.SetReturnType(RasterTypes::DATACUBE());
+					variant.SetFunction(fn);
+					variant.CanThrowErrors();
+				});
+				func.SetDescription(description);
+				func.SetExample("");
+				func.SetTag("ext", "raster");
+				func.SetTag("category", "spatial");
+			});
 		}
 	}
 };

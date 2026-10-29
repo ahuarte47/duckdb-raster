@@ -5,8 +5,6 @@
 
 // DuckDB
 #include "duckdb.hpp"
-#include "duckdb/catalog/catalog_entry/function_entry.hpp"
-#include "duckdb/function/scalar_function.hpp"
 
 namespace duckdb {
 
@@ -96,43 +94,45 @@ struct RT_Array2Cube {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
-		ScalarFunctionSet function_set("RT_Array2Cube");
-
-		static constexpr std::array<std::pair<const char *, LogicalTypeId>, 10> type_variants = {{
-		    {"RT_Array2Cube", LogicalTypeId::UTINYINT},
-		    {"RT_Array2Cube", LogicalTypeId::TINYINT},
-		    {"RT_Array2Cube", LogicalTypeId::USMALLINT},
-		    {"RT_Array2Cube", LogicalTypeId::SMALLINT},
-		    {"RT_Array2Cube", LogicalTypeId::UINTEGER},
-		    {"RT_Array2Cube", LogicalTypeId::INTEGER},
-		    {"RT_Array2Cube", LogicalTypeId::UBIGINT},
-		    {"RT_Array2Cube", LogicalTypeId::BIGINT},
-		    {"RT_Array2Cube", LogicalTypeId::FLOAT},
-		    {"RT_Array2Cube", LogicalTypeId::DOUBLE},
+		static constexpr std::array<LogicalTypeId, 10> type_variants = {{
+		    LogicalTypeId::UTINYINT,
+		    LogicalTypeId::TINYINT,
+		    LogicalTypeId::USMALLINT,
+		    LogicalTypeId::SMALLINT,
+		    LogicalTypeId::UINTEGER,
+		    LogicalTypeId::INTEGER,
+		    LogicalTypeId::UBIGINT,
+		    LogicalTypeId::BIGINT,
+		    LogicalTypeId::FLOAT,
+		    LogicalTypeId::DOUBLE,
 		}};
 
 		// Register a separate function for each supported array type.
-		for (const auto &entry : type_variants) {
-			const char *function_name = entry.first;
-			const LogicalType logical_type(entry.second);
+		FunctionBuilder::RegisterScalar(loader, "RT_Array2Cube", [](ScalarFunctionBuilder &func) {
+			//
+			for (const auto &entry : type_variants) {
+				const LogicalType logical_type(entry);
 
-			const auto executor = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Array2Cube::Execute(logical_type, args, state, result);
-			};
-			const ScalarFunction function(function_name,
-			                              {LogicalType::LIST(logical_type), LogicalType::VARCHAR, LogicalType::INTEGER,
-			                               LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::DOUBLE},
-			                              RasterTypes::DATACUBE(), executor);
-
-			function_set.AddFunction(function);
-		}
-
-		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
-		                                    EXAMPLE, tags);
+				const auto fn = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
+					RT_Array2Cube::Execute(logical_type, args, state, result);
+				};
+				func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
+					variant.AddParameter("in_array", LogicalType::LIST(logical_type));
+					variant.AddParameter("data_format", LogicalType::VARCHAR);
+					variant.AddParameter("bands", LogicalType::INTEGER);
+					variant.AddParameter("cols", LogicalType::INTEGER);
+					variant.AddParameter("rows", LogicalType::INTEGER);
+					variant.AddParameter("no_data", LogicalType::DOUBLE);
+					variant.SetReturnType(RasterTypes::DATACUBE());
+					variant.SetFunction(fn);
+					variant.CanThrowErrors();
+				});
+			}
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 
@@ -206,10 +206,6 @@ struct RT_Cube2Array {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
 		static constexpr std::array<std::pair<const char *, LogicalTypeId>, 10> type_variants = {{
 		    {"RT_Cube2ArrayUInt8", LogicalTypeId::UTINYINT},
 		    {"RT_Cube2ArrayInt8", LogicalTypeId::TINYINT},
@@ -228,14 +224,23 @@ struct RT_Cube2Array {
 			const char *function_name = entry.first;
 			const LogicalType logical_type(entry.second);
 
-			const auto executor = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
+			const auto fn = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
 				RT_Cube2Array::Execute(args, state, result, logical_type);
 			};
-			const ScalarFunction function(function_name, {RasterTypes::DATACUBE(), LogicalType::BOOLEAN},
-			                              RasterTypes::ARRAY(logical_type), executor);
-
-			RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
-			                                 tags);
+			FunctionBuilder::RegisterScalar(loader, function_name, [&](ScalarFunctionBuilder &func) {
+				//
+				func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
+					variant.AddParameter("datacube", RasterTypes::DATACUBE());
+					variant.AddParameter("filter_nodata", LogicalType::BOOLEAN);
+					variant.SetReturnType(RasterTypes::ARRAY(logical_type));
+					variant.SetFunction(fn);
+					variant.CanThrowErrors();
+				});
+				func.SetDescription(DESCRIPTION);
+				func.SetExample(EXAMPLE);
+				func.SetTag("ext", "raster");
+				func.SetTag("category", "scalar");
+			});
 		}
 	}
 };

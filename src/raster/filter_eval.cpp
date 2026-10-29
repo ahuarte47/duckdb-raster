@@ -111,7 +111,7 @@ ExpressionExecutor *FilterEval::GetExecutor(const IFilterRow &row) {
 		// Build a 1-row DataChunk with the projected columns populated from the ItemRow, and
 		// initialize the input chunk with the column values from the rows.
 		input.Initialize(context, data_types, 1);
-		input.SetCardinality(1);
+		input.SetChildCardinality(1);
 
 		// Prepare a chunk to hold the results of expression evaluation.
 		result.Initialize(context, vector<LogicalType>(expressions.size(), LogicalType::BOOLEAN), 1);

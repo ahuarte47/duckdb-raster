@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include "data_types.hpp"
 #include "raster_types.hpp"
 

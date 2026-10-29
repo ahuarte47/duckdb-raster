@@ -8,6 +8,7 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/data_format_utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/data_types.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/filter_eval.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/function_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_casts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_types.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raster_utils.cpp

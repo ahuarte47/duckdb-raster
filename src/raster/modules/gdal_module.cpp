@@ -1,7 +1,6 @@
 #include "gdal_module.hpp"
 #include "function_builder.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
-#include "duckdb/function/scalar_function.hpp"
 
 // GDAL
 #include "cpl_string.h"
@@ -67,14 +66,18 @@ struct RT_GdalConfig {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
-		const ScalarFunction func("RT_GdalConfig", {LogicalType::VARCHAR, LogicalType::VARCHAR}, LogicalType::BOOLEAN,
-		                          Execute);
-
-		RegisterFunction<ScalarFunction>(loader, func, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE, tags);
+		FunctionBuilder::RegisterScalar(loader, "RT_GdalConfig", [&](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("key", LogicalType::VARCHAR);
+				variant.AddParameter("value", LogicalType::VARCHAR);
+				variant.SetReturnType(LogicalType::BOOLEAN);
+				variant.SetFunction(Execute);
+				variant.SetDescription(DESCRIPTION);
+				variant.SetExample(EXAMPLE);
+			});
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 

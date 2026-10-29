@@ -227,7 +227,7 @@ struct RT_RasterValue {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+		| [`datacube`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 		| `band` | INTEGER | The 0-based index of the band to read the value from. |
 		| `col` | INTEGER | The pixel column index within the tile. |
 		| `row` | INTEGER | The pixel row index within the tile. |
@@ -245,38 +245,46 @@ struct RT_RasterValue {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
-		ScalarFunctionSet function_set("RT_RasterValue");
-
-		ScalarFunction function_01("RT_RasterValue",
-		                           {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER,
-		                            LogicalType::INTEGER, LogicalType::DOUBLE},
-		                           LogicalType::DOUBLE, ExecuteForDataCube);
-
-		function_01.SetVolatile();
-		function_set.AddFunction(function_01);
-
-		ScalarFunction function_02("RT_RasterValue",
-		                           {LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::INTEGER,
-		                            LogicalType::INTEGER, LogicalType::DOUBLE},
-		                           LogicalType::DOUBLE, ExecuteForFilePath);
-
-		function_02.SetVolatile();
-		function_set.AddFunction(function_02);
-
-		ScalarFunction function_03("RT_RasterValue",
-		                           {LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER, LogicalType::INTEGER,
-		                            LogicalType::INTEGER, LogicalType::DOUBLE},
-		                           LogicalType::DOUBLE, ExecuteForFilePath);
-
-		function_03.SetVolatile();
-		function_set.AddFunction(function_03);
-
-		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
-		                                    EXAMPLE, tags);
+		FunctionBuilder::RegisterScalar(loader, "RT_RasterValue", [](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("col", LogicalType::INTEGER);
+				variant.AddParameter("row", LogicalType::INTEGER);
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::DOUBLE);
+				variant.SetFunction(ExecuteForDataCube);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("col", LogicalType::INTEGER);
+				variant.AddParameter("row", LogicalType::INTEGER);
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::DOUBLE);
+				variant.SetFunction(ExecuteForFilePath);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("col", LogicalType::INTEGER);
+				variant.AddParameter("row", LogicalType::INTEGER);
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::DOUBLE);
+				variant.SetFunction(ExecuteForFilePath);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 
@@ -585,7 +593,7 @@ struct RT_RasterValues {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+		| [`datacube`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 		| `band` | INTEGER | The 0-based index of the band to read the value from. |
 		| `cols` | INTEGER[] | The pixel column indices within the tile. |
 		| `rows` | INTEGER[] | The pixel row indices within the tile. |
@@ -595,7 +603,7 @@ struct RT_RasterValues {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+		| [`datacube`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 		| `band` | INTEGER | The 0-based index of the band to read the value from. |
 		| `pixels` | INTEGER[][2] | The array of coordinate pairs (column, row) within the tile. |
 		| `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
@@ -616,64 +624,77 @@ struct RT_RasterValues {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
+		FunctionBuilder::RegisterScalar(loader, "RT_RasterValues", [](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("cols", LogicalType::LIST(LogicalType::INTEGER));
+				variant.AddParameter("rows", LogicalType::LIST(LogicalType::INTEGER));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForDataCube1);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("cols", LogicalType::LIST(LogicalType::INTEGER));
+				variant.AddParameter("rows", LogicalType::LIST(LogicalType::INTEGER));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath1);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("cols", LogicalType::LIST(LogicalType::INTEGER));
+				variant.AddParameter("rows", LogicalType::LIST(LogicalType::INTEGER));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath1);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
 
-		ScalarFunctionSet function_set("RT_RasterValues");
-
-		ScalarFunction function_1a("RT_RasterValues",
-		                           {RasterTypes::DATACUBE(), LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::INTEGER), LogicalType::LIST(LogicalType::INTEGER),
-		                            LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForDataCube1);
-
-		function_1a.SetVolatile();
-		function_set.AddFunction(function_1a);
-
-		ScalarFunction function_1b("RT_RasterValues",
-		                           {RasterTypes::DATACUBE(), LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::LIST(LogicalType::INTEGER)), LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForDataCube2);
-
-		function_1b.SetVolatile();
-		function_set.AddFunction(function_1b);
-
-		ScalarFunction function_2a("RT_RasterValues",
-		                           {LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::LIST(LogicalType::INTEGER),
-		                            LogicalType::LIST(LogicalType::INTEGER), LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForFilePath1);
-
-		function_2a.SetVolatile();
-		function_set.AddFunction(function_2a);
-
-		ScalarFunction function_2b("RT_RasterValues",
-		                           {LogicalType::VARCHAR, LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::LIST(LogicalType::INTEGER)), LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForFilePath2);
-
-		function_2b.SetVolatile();
-		function_set.AddFunction(function_2b);
-
-		ScalarFunction function_3a("RT_RasterValues",
-		                           {LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::INTEGER), LogicalType::LIST(LogicalType::INTEGER),
-		                            LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForFilePath1);
-
-		function_3a.SetVolatile();
-		function_set.AddFunction(function_3a);
-
-		ScalarFunction function_3b("RT_RasterValues",
-		                           {LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::LIST(LogicalType::INTEGER)), LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForFilePath2);
-
-		function_3b.SetVolatile();
-		function_set.AddFunction(function_3b);
-
-		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
-		                                    EXAMPLE, tags);
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("pixels", LogicalType::LIST(LogicalType::LIST(LogicalType::INTEGER)));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForDataCube2);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("pixels", LogicalType::LIST(LogicalType::LIST(LogicalType::INTEGER)));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath2);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("pixels", LogicalType::LIST(LogicalType::LIST(LogicalType::INTEGER)));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath2);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 
@@ -726,11 +747,11 @@ struct RT_RasterValue_Agg {
 			//	ARG8_TYPE = double   (default value)
 
 			UnifiedVectorFormat state_data;
-			input_states.ToUnifiedFormat(count, state_data);
+			input_states.ToUnifiedFormat(state_data);
 
 			UnifiedVectorFormat input_data[8];
 			for (idx_t j = 0; j < 8; j++) {
-				inputs[j].ToUnifiedFormat(count, input_data[j]);
+				inputs[j].ToUnifiedFormat(input_data[j]);
 			}
 
 			auto states = UnifiedVectorFormat::GetData<data_ptr_t>(state_data);
@@ -825,12 +846,6 @@ struct RT_RasterValue_Agg {
 			}
 		}
 
-		static void SimpleUpdate(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count,
-		                         data_ptr_t state_p, idx_t count) {
-			Vector states(Value::POINTER(CastPointerToValue(state_p)));
-			ScatterUpdate(inputs, aggr_input_data, input_count, states, count);
-		}
-
 		template <class STATE>
 		static void Finalize(STATE &state, AggregateFinalizeData &finalize_data) {
 			//! Produce the final result.
@@ -854,7 +869,7 @@ struct RT_RasterValue_Agg {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| `databand` | DATACUBE | The input datacube column. |
+		| `datacube` | DATACUBE | The input datacube column. |
 		| `band` | INTEGER | The 0-based index of the band to read the value from. |
 		| `col` | INTEGER | The pixel column index within the tile. |
 		| `row` | INTEGER | The pixel row index within the tile. |
@@ -881,17 +896,23 @@ struct RT_RasterValue_Agg {
 		tags.insert("ext", "raster");
 		tags.insert("category", "aggregate");
 
-		AggregateFunction fun(
-		    "RT_RasterValue_Agg",
-		    {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::INTEGER,
-		     LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::JSON(), LogicalType::DOUBLE},
-		    LogicalType::DOUBLE, AggregateFunction::StateSize<FunctionAggState>,
-		    AggregateFunction::StateInitialize<FunctionAggState, FunctionAggOp>, FunctionAggOp::ScatterUpdate,
-		    AggregateFunction::StateCombine<FunctionAggState, FunctionAggOp>,
-		    AggregateFunction::StateVoidFinalize<FunctionAggState, FunctionAggOp>, FunctionAggOp::SimpleUpdate);
+		FunctionBuilder::RegisterAggregate(loader, "RT_RasterValue_Agg", [&](AggregateFunctionBuilder &func) {
+			const AggregateFunction aggregate(
+			    "RT_RasterValue_Agg",
+			    {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::INTEGER,
+			     LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::JSON(), LogicalType::DOUBLE},
+			    LogicalType::DOUBLE, AggregateFunction::StateSize<FunctionAggState>,
+			    AggregateFunction::StateInitialize<FunctionAggState, FunctionAggOp>, FunctionAggOp::ScatterUpdate,
+			    AggregateFunction::StateCombine<FunctionAggState, FunctionAggOp>,
+			    AggregateFunction::StateVoidFinalize<FunctionAggState, FunctionAggOp>,
+			    AggregateFunction::NoClusterUpdate());
 
-		RegisterFunction<AggregateFunction>(loader, fun, CatalogType::AGGREGATE_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
-		                                    tags);
+			func.SetFunction(aggregate);
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "aggregate");
+		});
 	}
 };
 
@@ -1039,7 +1060,7 @@ struct RT_CoordValue {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+		| [`datacube`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 		| `band` | INTEGER | The 0-based index of the band to read the value from. |
 		| `x` | DOUBLE | The x-coordinate of the pixel within the tile. |
 		| `y` | DOUBLE | The y-coordinate of the pixel within the tile. |
@@ -1058,38 +1079,47 @@ struct RT_CoordValue {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
-		ScalarFunctionSet function_set("RT_CoordValue");
-
-		ScalarFunction function_01("RT_CoordValue",
-		                           {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::DOUBLE,
-		                            LogicalType::DOUBLE, LogicalType::JSON(), LogicalType::DOUBLE},
-		                           LogicalType::DOUBLE, ExecuteForDataCube);
-
-		function_01.SetVolatile();
-		function_set.AddFunction(function_01);
-
-		ScalarFunction function_02(
-		    "RT_CoordValue",
-		    {LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE},
-		    LogicalType::DOUBLE, ExecuteForFilePath);
-
-		function_02.SetVolatile();
-		function_set.AddFunction(function_02);
-
-		ScalarFunction function_03("RT_CoordValue",
-		                           {LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER, LogicalType::DOUBLE,
-		                            LogicalType::DOUBLE, LogicalType::DOUBLE},
-		                           LogicalType::DOUBLE, ExecuteForFilePath);
-
-		function_03.SetVolatile();
-		function_set.AddFunction(function_03);
-
-		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
-		                                    EXAMPLE, tags);
+		FunctionBuilder::RegisterScalar(loader, "RT_CoordValue", [](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("x", LogicalType::DOUBLE);
+				variant.AddParameter("y", LogicalType::DOUBLE);
+				variant.AddParameter("metadata", LogicalType::JSON());
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::DOUBLE);
+				variant.SetFunction(ExecuteForDataCube);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("x", LogicalType::DOUBLE);
+				variant.AddParameter("y", LogicalType::DOUBLE);
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::DOUBLE);
+				variant.SetFunction(ExecuteForFilePath);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("x", LogicalType::DOUBLE);
+				variant.AddParameter("y", LogicalType::DOUBLE);
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::DOUBLE);
+				variant.SetFunction(ExecuteForFilePath);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 
@@ -1442,7 +1472,7 @@ struct RT_CoordValues {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| [`databand`, `filepath`, `filepaths`] | [DATACUBE | VARCHAR | VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+		| [`datacube`, `filepath`, `filepaths`] | [DATACUBE | VARCHAR | VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 		| `band` | INTEGER | The 0-based index of the band to read the value from. |
 		| `xs` | DOUBLE[] | The array of x-coordinates of the pixels within the tile. |
 		| `ys` | DOUBLE[] | The array of y-coordinates of the pixels within the tile. |
@@ -1453,7 +1483,7 @@ struct RT_CoordValues {
 
 		| Parameter | Type | Description |
 		| --------- | -----| ----------- |
-		| [`databand`, `filepath`, `filepaths`] | [DATACUBE | VARCHAR | VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+		| [`datacube`, `filepath`, `filepaths`] | [DATACUBE | VARCHAR | VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 		| `band` | INTEGER | The 0-based index of the band to read the value from. |
 		| `coords` | DOUBLE[][2] | The array of coordinate pairs (x, y) of the pixels within the tile. |
 		| `metadata` | JSON | The metadata associated with the datacube. |
@@ -1484,65 +1514,79 @@ struct RT_CoordValues {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
+		FunctionBuilder::RegisterScalar(loader, "RT_CoordValues", [](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("xs", LogicalType::LIST(LogicalType::DOUBLE));
+				variant.AddParameter("ys", LogicalType::LIST(LogicalType::DOUBLE));
+				variant.AddParameter("metadata", LogicalType::JSON());
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForDataCube1);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("xs", LogicalType::LIST(LogicalType::DOUBLE));
+				variant.AddParameter("ys", LogicalType::LIST(LogicalType::DOUBLE));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath1);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("xs", LogicalType::LIST(LogicalType::DOUBLE));
+				variant.AddParameter("ys", LogicalType::LIST(LogicalType::DOUBLE));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath1);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
 
-		ScalarFunctionSet function_set("RT_CoordValues");
-
-		ScalarFunction function_1a("RT_CoordValues",
-		                           {RasterTypes::DATACUBE(), LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::DOUBLE), LogicalType::LIST(LogicalType::DOUBLE),
-		                            LogicalType::JSON(), LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForDataCube1);
-
-		function_1a.SetVolatile();
-		function_set.AddFunction(function_1a);
-
-		ScalarFunction function_1b("RT_CoordValues",
-		                           {RasterTypes::DATACUBE(), LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::LIST(LogicalType::DOUBLE)), LogicalType::JSON(),
-		                            LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForDataCube2);
-
-		function_1b.SetVolatile();
-		function_set.AddFunction(function_1b);
-
-		ScalarFunction function_2a("RT_CoordValues",
-		                           {LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::LIST(LogicalType::DOUBLE),
-		                            LogicalType::LIST(LogicalType::DOUBLE), LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForFilePath1);
-
-		function_2a.SetVolatile();
-		function_set.AddFunction(function_2a);
-
-		ScalarFunction function_2b("RT_CoordValues",
-		                           {LogicalType::VARCHAR, LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::LIST(LogicalType::DOUBLE)), LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForFilePath2);
-
-		function_2b.SetVolatile();
-		function_set.AddFunction(function_2b);
-
-		ScalarFunction function_3a("RT_CoordValues",
-		                           {LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::DOUBLE), LogicalType::LIST(LogicalType::DOUBLE),
-		                            LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForFilePath1);
-
-		function_3a.SetVolatile();
-		function_set.AddFunction(function_3a);
-
-		ScalarFunction function_3b("RT_CoordValues",
-		                           {LogicalType::LIST(LogicalType::VARCHAR), LogicalType::INTEGER,
-		                            LogicalType::LIST(LogicalType::LIST(LogicalType::DOUBLE)), LogicalType::DOUBLE},
-		                           LogicalType::LIST(LogicalType::DOUBLE), ExecuteForFilePath2);
-
-		function_3b.SetVolatile();
-		function_set.AddFunction(function_3b);
-
-		RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION,
-		                                    EXAMPLE, tags);
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("coords", LogicalType::LIST(LogicalType::LIST(LogicalType::DOUBLE)));
+				variant.AddParameter("metadata", LogicalType::JSON());
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForDataCube2);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("coords", LogicalType::LIST(LogicalType::LIST(LogicalType::DOUBLE)));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath2);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("band", LogicalType::INTEGER);
+				variant.AddParameter("coords", LogicalType::LIST(LogicalType::LIST(LogicalType::DOUBLE)));
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath2);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 
@@ -1595,11 +1639,11 @@ struct RT_CoordValue_Agg {
 			//	ARG8_TYPE = double   (default value)
 
 			UnifiedVectorFormat state_data;
-			input_states.ToUnifiedFormat(count, state_data);
+			input_states.ToUnifiedFormat(state_data);
 
 			UnifiedVectorFormat input_data[8];
 			for (idx_t j = 0; j < 8; j++) {
-				inputs[j].ToUnifiedFormat(count, input_data[j]);
+				inputs[j].ToUnifiedFormat(input_data[j]);
 			}
 
 			auto states = UnifiedVectorFormat::GetData<data_ptr_t>(state_data);
@@ -1695,12 +1739,6 @@ struct RT_CoordValue_Agg {
 			}
 		}
 
-		static void SimpleUpdate(Vector inputs[], AggregateInputData &aggr_input_data, idx_t input_count,
-		                         data_ptr_t state_p, idx_t count) {
-			Vector states(Value::POINTER(CastPointerToValue(state_p)));
-			ScatterUpdate(inputs, aggr_input_data, input_count, states, count);
-		}
-
 		template <class STATE>
 		static void Finalize(STATE &state, AggregateFinalizeData &finalize_data) {
 			//! Produce the final result.
@@ -1743,21 +1781,25 @@ struct RT_CoordValue_Agg {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "aggregate");
+		FunctionBuilder::RegisterAggregate(loader, "RT_CoordValue_Agg", [](AggregateFunctionBuilder &func) {
+			//
+			const AggregateFunction func01(
+			    "RT_CoordValue_Agg",
+			    {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::DOUBLE, LogicalType::DOUBLE,
+			     LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::JSON(), LogicalType::DOUBLE},
+			    LogicalType::DOUBLE, AggregateFunction::StateSize<FunctionAggState>,
+			    AggregateFunction::StateInitialize<FunctionAggState, FunctionAggOp>, FunctionAggOp::ScatterUpdate,
+			    AggregateFunction::StateCombine<FunctionAggState, FunctionAggOp>,
+			    AggregateFunction::StateVoidFinalize<FunctionAggState, FunctionAggOp>,
+			    AggregateFunction::NoClusterUpdate());
 
-		AggregateFunction fun(
-		    "RT_CoordValue_Agg",
-		    {RasterTypes::DATACUBE(), LogicalType::INTEGER, LogicalType::DOUBLE, LogicalType::DOUBLE,
-		     LogicalType::INTEGER, LogicalType::INTEGER, LogicalType::JSON(), LogicalType::DOUBLE},
-		    LogicalType::DOUBLE, AggregateFunction::StateSize<FunctionAggState>,
-		    AggregateFunction::StateInitialize<FunctionAggState, FunctionAggOp>, FunctionAggOp::ScatterUpdate,
-		    AggregateFunction::StateCombine<FunctionAggState, FunctionAggOp>,
-		    AggregateFunction::StateVoidFinalize<FunctionAggState, FunctionAggOp>, FunctionAggOp::SimpleUpdate);
+			func.SetFunction(func01);
 
-		RegisterFunction<AggregateFunction>(loader, fun, CatalogType::AGGREGATE_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
-		                                    tags);
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "aggregate");
+		});
 	}
 };
 

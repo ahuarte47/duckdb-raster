@@ -795,7 +795,7 @@ Just to compute statistics for a specific band of a datacube:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The datacube column to compute statistics for. |
+| `datacube` | DATACUBE | The datacube column to compute statistics for. |
 | `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 
 To compute statistics for a specific band of a datacube, but only for those valid (non-nodata)
@@ -803,7 +803,7 @@ cells that fall within a geometry (Zonal statistics):
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The datacube column to compute statistics for. |
+| `datacube` | DATACUBE | The datacube column to compute statistics for. |
 | `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 | `tile_x` | INTEGER | The tile x coordinate of the tile. |
 | `tile_y` | INTEGER | The tile y coordinate of the tile. |
@@ -933,7 +933,7 @@ The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+| [`datacube`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 | `band` | INTEGER | The 0-based index of the band to read the value from. |
 | `col` | INTEGER | The pixel column index within the tile. |
 | `row` | INTEGER | The pixel row index within the tile. |
@@ -982,7 +982,7 @@ First version uses separate arrays for columns and rows:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+| [`datacube`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 | `band` | INTEGER | The 0-based index of the band to read the values from. |
 | `cols` | INTEGER[] | The array of pixel column indices within the tile. |
 | `rows` | INTEGER[] | The array of pixel row indices within the tile. |
@@ -992,7 +992,7 @@ The second version uses a single array of coordinate pairs:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+| [`datacube`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 | `band` | INTEGER | The 0-based index of the band to read the value from. |
 | `pixels` | INTEGER[][2] | The array of coordinate pairs (column, row) within the tile. |
 | `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
@@ -1003,13 +1003,13 @@ and then retrieves the values at the given coordinates.
 #### Signature
 
 ```sql
-RT_RasterValues ([databand DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
+RT_RasterValues ([datacube DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
                  band INTEGER,
                  cols INTEGER[],
                  rows INTEGER[],
                  default_value DOUBLE)
 
-RT_RasterValues ([databand DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
+RT_RasterValues ([datacube DATACUBE, filepath VARCHAR, filepaths VARCHAR[]],
                  band INTEGER,
                  pixels INTEGER[][2],
                  default_value DOUBLE)
@@ -1048,7 +1048,7 @@ The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+| [`datacube`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 | `band` | INTEGER | The 0-based index of the band to read the value from. |
 | `x` | DOUBLE | The x coordinate in the same spatial reference system as the raster. |
 | `y` | DOUBLE | The y coordinate in the same spatial reference system as the raster. |
@@ -1111,7 +1111,7 @@ First version uses separate arrays for x and y coordinates:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| [`databand`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+| [`datacube`, `filepath`, `filepaths`] | [DATACUBE, VARCHAR, VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 | `band` | INTEGER | The 0-based index of the band to read the values from. |
 | `xs` | DOUBLE[] | The array of x-coordinates of the pixels within the tile. |
 | `ys` | DOUBLE[] | The array of y-coordinates of the pixels within the tile. |
@@ -1122,7 +1122,7 @@ The second version uses a single array of coordinate pairs:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| [`databand`, `filepath`, `filepaths`] | [DATACUBE | VARCHAR | VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
+| [`datacube`, `filepath`, `filepaths`] | [DATACUBE | VARCHAR | VARCHAR[]] | The input datacube column or the filepath[s] to the raster[s]. |
 | `band` | INTEGER | The 0-based index of the band to read the value from. |
 | `coords` | DOUBLE[][2] | The array of coordinate pairs (x, y) of the pixels within the tile. |
 | `metadata` | JSON | The metadata associated with the datacube. |
@@ -1190,7 +1190,7 @@ The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The datacube column to compute the envelope for. |
+| `datacube` | DATACUBE | The datacube column to compute the envelope for. |
 | `band` | INTEGER | The 0-based index of the band to compute the envelope for. |
 | `tile_x` | INTEGER | The tile x coordinate of the tile. |
 | `tile_y` | INTEGER | The tile y coordinate of the tile. |
@@ -1233,7 +1233,7 @@ The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The datacube column to polygonize. |
+| `datacube` | DATACUBE | The datacube column to polygonize. |
 | `band` | INTEGER | The 0-based index of the band to polygonize. |
 | `tile_x` | INTEGER | The tile x coordinate of the tile. |
 | `tile_y` | INTEGER | The tile y coordinate of the tile. |
@@ -1274,7 +1274,7 @@ The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The input datacube column. |
+| `datacube` | DATACUBE | The input datacube column. |
 | `tile_x` | INTEGER | The tile x coordinate of the tile. |
 | `tile_y` | INTEGER | The tile y coordinate of the tile. |
 | `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size. |
@@ -1325,7 +1325,7 @@ The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The input datacube column. |
+| `datacube` | DATACUBE | The input datacube column. |
 | `tile_x` | INTEGER | The tile x coordinate of the tile. |
 | `tile_y` | INTEGER | The tile y coordinate of the tile. |
 | `metadata` | JSON | Raster metadata providing the affine geotransform matrix and tile block size. |
@@ -1383,7 +1383,7 @@ Just to compute statistics for a specific band of a datacube:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The datacube column to compute statistics for. |
+| `datacube` | DATACUBE | The datacube column to compute statistics for. |
 | `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 
 To compute statistics for a specific band of a datacube, but only for those valid (non-nodata)
@@ -1391,7 +1391,7 @@ cells that fall within a geometry (Zonal statistics):
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The datacube column to compute statistics for. |
+| `datacube` | DATACUBE | The datacube column to compute statistics for. |
 | `band` | INTEGER | The 0-based index of the band to compute statistics for. |
 | `tile_x` | INTEGER | The tile x coordinate of the tile. |
 | `tile_y` | INTEGER | The tile y coordinate of the tile. |
@@ -1450,7 +1450,7 @@ The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The input datacube column. |
+| `datacube` | DATACUBE | The input datacube column. |
 | `band` | INTEGER | The 0-based index of the band to read the value from. |
 | `col` | INTEGER | The pixel column index within the tile. |
 | `row` | INTEGER | The pixel row index within the tile. |
@@ -1502,7 +1502,7 @@ The function accepts the following parameters:
 
 | Parameter | Type | Description |
 | --------- | -----| ----------- |
-| `databand` | DATACUBE | The input datacube column. |
+| `datacube` | DATACUBE | The input datacube column. |
 | `band` | INTEGER | The 0-based index of the band to read the value from. |
 | `x` | DOUBLE | The world x coordinate. |
 | `y` | DOUBLE | The world y coordinate. |

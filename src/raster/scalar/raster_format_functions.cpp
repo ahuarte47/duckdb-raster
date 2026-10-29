@@ -5,8 +5,6 @@
 
 // DuckDB
 #include "duckdb.hpp"
-#include "duckdb/catalog/catalog_entry/function_entry.hpp"
-#include "duckdb/function/scalar_function.hpp"
 // GDAL
 #include "modules/gdal_dataset_io.hpp"
 
@@ -69,10 +67,6 @@ struct RT_ChangeType {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
 		static constexpr std::array<std::pair<const char *, LogicalTypeId>, 10> type_variants = {{
 		    {"RT_Cube2TypeUInt8", LogicalTypeId::UTINYINT},
 		    {"RT_Cube2TypeInt8", LogicalTypeId::TINYINT},
@@ -91,13 +85,22 @@ struct RT_ChangeType {
 			const char *function_name = entry.first;
 			const LogicalType logical_type(entry.second);
 
-			const auto executor = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
+			const auto fn = [logical_type](DataChunk &args, ExpressionState &state, Vector &result) {
 				RT_ChangeType::Execute(logical_type, args, state, result);
 			};
-			const ScalarFunction function(function_name, {RasterTypes::DATACUBE()}, RasterTypes::DATACUBE(), executor);
-
-			RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
-			                                 tags);
+			FunctionBuilder::RegisterScalar(loader, function_name, [&](ScalarFunctionBuilder &func) {
+				//
+				func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
+					variant.AddParameter("datacube", RasterTypes::DATACUBE());
+					variant.SetReturnType(RasterTypes::DATACUBE());
+					variant.SetFunction(fn);
+					variant.CanThrowErrors();
+				});
+				func.SetDescription(DESCRIPTION);
+				func.SetExample(EXAMPLE);
+				func.SetTag("ext", "raster");
+				func.SetTag("category", "scalar");
+			});
 		}
 	}
 };
@@ -161,15 +164,20 @@ struct RT_Metadata {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
-		ScalarFunction function("RT_Metadata", {LogicalType::VARCHAR}, LogicalType::JSON(), Execute);
-		function.SetVolatile();
-
-		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
-		                                 tags);
+		FunctionBuilder::RegisterScalar(loader, "RT_Metadata", [&](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.SetReturnType(LogicalType::JSON());
+				variant.SetFunction(Execute);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 

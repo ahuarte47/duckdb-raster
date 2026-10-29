@@ -30,8 +30,7 @@ std::string DuckDBDatasetFactory::GdalFilePath(ClientContext &context, const std
 }
 
 //! Convert a named parameter map to an array suitable for passing to GDAL functions.
-static std::vector<char const *> NamedParametersAsVector(const named_parameter_map_t &input,
-                                                         const std::string &keyname) {
+static std::vector<char const *> NamedParametersAsVector(const named_argument_map_t &input, const Identifier &keyname) {
 	auto output = std::vector<char const *>();
 
 	auto input_param = input.find(keyname);
@@ -48,8 +47,8 @@ static std::vector<char const *> NamedParametersAsVector(const named_parameter_m
 }
 
 //! Convert a fileset parameter map to an array suitable for passing to GDAL functions.
-static std::vector<char const *> FilesetParametersAsVector(const named_parameter_map_t &input,
-                                                           const std::string &keyname, ClientContext &context) {
+static std::vector<char const *> FilesetParametersAsVector(const named_argument_map_t &input, const Identifier &keyname,
+                                                           ClientContext &context) {
 	auto output = std::vector<char const *>();
 
 	auto input_param = input.find(keyname);
@@ -71,7 +70,7 @@ static std::vector<char const *> FilesetParametersAsVector(const named_parameter
 //======================================================================================================================
 
 GDALDataset *DuckDBDatasetFactory::OpenDataset(ClientContext &context, const std::vector<std::string> &file_names,
-                                               const named_parameter_map_t &params) {
+                                               const named_argument_map_t &params) {
 	GDALDataset *dataset = nullptr;
 
 	if (file_names.size() == 1) {
@@ -137,7 +136,7 @@ GDALDataset *DuckDBDatasetFactory::OpenDataset(ClientContext &context, const std
 }
 
 GDALDataset *DuckDBDatasetFactory::WarpDataset(ClientContext &context, const std::vector<std::string> &file_names,
-                                               const named_parameter_map_t &params,
+                                               const named_argument_map_t &params,
                                                std::vector<GDALDatasetUniquePtr> &child_datasets) {
 	GDALDataset *result = nullptr;
 
@@ -236,7 +235,7 @@ GDALDataset *DuckDBDatasetFactory::WarpDataset(ClientContext &context, const std
 }
 
 GDALDataset *DuckDBDatasetFactory::CreateDataset(ClientContext &context, const std::string &file_name,
-                                                 const named_parameter_map_t &params) {
+                                                 const named_argument_map_t &params) {
 	auto input_param = params.find("create_options");
 	if (input_param == params.end() || input_param->second.type().id() != LogicalTypeId::LIST) {
 		throw InvalidInputException("Missing or invalid 'create_options' parameter for dataset creation");

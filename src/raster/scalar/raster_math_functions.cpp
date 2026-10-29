@@ -5,8 +5,6 @@
 
 // DuckDB
 #include "duckdb.hpp"
-#include "duckdb/catalog/catalog_entry/function_entry.hpp"
-#include "duckdb/function/scalar_function.hpp"
 
 namespace duckdb {
 
@@ -60,14 +58,18 @@ struct RT_NullOrEmpty {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
-		const ScalarFunction function("RT_CubeNullOrEmpty", {RasterTypes::DATACUBE()}, LogicalType::BOOLEAN, Execute);
-
-		RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, DESCRIPTION, EXAMPLE,
-		                                 tags);
+		FunctionBuilder::RegisterScalar(loader, "RT_CubeNullOrEmpty", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("datacube", RasterTypes::DATACUBE());
+				variant.SetReturnType(LogicalType::BOOLEAN);
+				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
 	}
 };
 
@@ -262,10 +264,6 @@ struct RT_Math {
 	//------------------------------------------------------------------------------------------------------------------
 
 	static void Register(ExtensionLoader &loader) {
-		InsertionOrderPreservingMap<string> tags;
-		tags.insert("ext", "raster");
-		tags.insert("category", "scalar");
-
 		// Register unary operations
 		static constexpr std::array<std::tuple<const char *, CubeUnaryOp::Value, const char *>, 5> unary_ops = {{
 		    {"RT_CubeNeg", CubeUnaryOp::NEGATE,
@@ -284,14 +282,22 @@ struct RT_Math {
 			const auto &op = std::get<1>(entry);
 			const auto &description = std::get<2>(entry);
 
-			const auto executor = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+			const auto fn = [op](DataChunk &args, ExpressionState &state, Vector &result) {
 				RT_Math::ExecuteUnaryOp(op, args, state, result);
 			};
-			ScalarFunction function =
-			    ScalarFunction(function_name, {RasterTypes::DATACUBE()}, RasterTypes::DATACUBE(), executor);
-
-			RegisterFunction<ScalarFunction>(loader, function, CatalogType::SCALAR_FUNCTION_ENTRY, description, "",
-			                                 tags);
+			FunctionBuilder::RegisterScalar(loader, function_name, [&](ScalarFunctionBuilder &func) {
+				//
+				func.AddVariant([fn](ScalarFunctionVariantBuilder &variant) {
+					variant.AddParameter("datacube", RasterTypes::DATACUBE());
+					variant.SetReturnType(RasterTypes::DATACUBE());
+					variant.SetFunction(fn);
+					variant.CanThrowErrors();
+				});
+				func.SetDescription(description);
+				func.SetExample("");
+				func.SetTag("ext", "raster");
+				func.SetTag("category", "scalar");
+			});
 		}
 
 		// Register binary operations
@@ -415,47 +421,61 @@ struct RT_Math {
 			const auto &description = std::get<2>(entry);
 			const auto &override_function = std::get<3>(entry);
 
-			ScalarFunctionSet function_set(function_name);
-
-			const auto executor1a = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Math::ExecuteBinaryOp1a(op, args, state, result);
-			};
-			ScalarFunction func1a = ScalarFunction(function_name, {RasterTypes::DATACUBE(), RasterTypes::DATACUBE()},
-			                                       RasterTypes::DATACUBE(), executor1a);
-
-			function_set.AddFunction(func1a);
-
-			const auto executor2a = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-				RT_Math::ExecuteBinaryOp2a(op, args, state, result);
-			};
-			ScalarFunction func2a = ScalarFunction(function_name, {RasterTypes::DATACUBE(), LogicalType::DOUBLE},
-			                                       RasterTypes::DATACUBE(), executor2a);
-
-			function_set.AddFunction(func2a);
-
-			// Override with extra parameter for specifying the nodata value of the result
-			if (override_function) {
-				const auto executor1b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-					RT_Math::ExecuteBinaryOp1b(op, args, state, result);
+			FunctionBuilder::RegisterScalar(loader, function_name, [&](ScalarFunctionBuilder &func) {
+				//
+				const auto fn1a = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+					RT_Math::ExecuteBinaryOp1a(op, args, state, result);
 				};
-				ScalarFunction func1b = ScalarFunction(
-				    function_name, {RasterTypes::DATACUBE(), RasterTypes::DATACUBE(), LogicalType::DOUBLE},
-				    RasterTypes::DATACUBE(), executor1b);
+				func.AddVariant([fn1a](ScalarFunctionVariantBuilder &variant) {
+					variant.AddParameter("a", RasterTypes::DATACUBE());
+					variant.AddParameter("b", RasterTypes::DATACUBE());
+					variant.SetReturnType(RasterTypes::DATACUBE());
+					variant.SetFunction(fn1a);
+					variant.CanThrowErrors();
+				});
 
-				function_set.AddFunction(func1b);
-
-				const auto executor2b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
-					RT_Math::ExecuteBinaryOp2b(op, args, state, result);
+				const auto fn2a = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+					RT_Math::ExecuteBinaryOp2a(op, args, state, result);
 				};
-				ScalarFunction func2b =
-				    ScalarFunction(function_name, {RasterTypes::DATACUBE(), LogicalType::DOUBLE, LogicalType::DOUBLE},
-				                   RasterTypes::DATACUBE(), executor2b);
+				func.AddVariant([fn2a](ScalarFunctionVariantBuilder &variant) {
+					variant.AddParameter("a", RasterTypes::DATACUBE());
+					variant.AddParameter("b", LogicalType::DOUBLE);
+					variant.SetReturnType(RasterTypes::DATACUBE());
+					variant.SetFunction(fn2a);
+					variant.CanThrowErrors();
+				});
 
-				function_set.AddFunction(func2b);
-			}
+				// Override with extra parameter for specifying the nodata value of the result
+				if (override_function) {
+					const auto fn1b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+						RT_Math::ExecuteBinaryOp1b(op, args, state, result);
+					};
+					func.AddVariant([fn1b](ScalarFunctionVariantBuilder &variant) {
+						variant.AddParameter("a", RasterTypes::DATACUBE());
+						variant.AddParameter("b", RasterTypes::DATACUBE());
+						variant.AddParameter("nodata", LogicalType::DOUBLE);
+						variant.SetReturnType(RasterTypes::DATACUBE());
+						variant.SetFunction(fn1b);
+						variant.CanThrowErrors();
+					});
 
-			RegisterFunction<ScalarFunctionSet>(loader, function_set, CatalogType::SCALAR_FUNCTION_ENTRY, description,
-			                                    "", tags);
+					const auto fn2b = [op](DataChunk &args, ExpressionState &state, Vector &result) {
+						RT_Math::ExecuteBinaryOp2b(op, args, state, result);
+					};
+					func.AddVariant([fn2b](ScalarFunctionVariantBuilder &variant) {
+						variant.AddParameter("a", RasterTypes::DATACUBE());
+						variant.AddParameter("b", LogicalType::DOUBLE);
+						variant.AddParameter("nodata", LogicalType::DOUBLE);
+						variant.SetReturnType(RasterTypes::DATACUBE());
+						variant.SetFunction(fn2b);
+						variant.CanThrowErrors();
+					});
+				}
+				func.SetDescription(description);
+				func.SetExample("");
+				func.SetTag("ext", "raster");
+				func.SetTag("category", "scalar");
+			});
 		}
 	}
 };

@@ -4,14 +4,12 @@
 
 require raster
 
-statement ok
-INSTALL spatial;
+require spatial
+
+require json
 
 statement ok
 LOAD spatial;
-
-statement ok
-INSTALL json;
 
 statement ok
 LOAD json;

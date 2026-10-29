@@ -118,7 +118,7 @@ Value GEOSLocalState::GeometryToValue(const GEOSContextHandle_t geos_ctx, GEOSGe
 
 	std::unique_ptr<unsigned char, decltype(wkb_free)> wkb_guard(wkb_data, wkb_free);
 	Value geometry_val = Value::BLOB(wkb_data, wkb_size);
-	geometry_val.Reinterpret(LogicalType::GEOMETRY());
+	geometry_val = geometry_val.WithType(LogicalType::GEOMETRY());
 
 	return geometry_val;
 }
