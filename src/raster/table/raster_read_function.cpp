@@ -3,12 +3,14 @@
 #include "filter_eval.hpp"
 #include "data_cube.hpp"
 #include "function_builder.hpp"
+#include <cstring>
 #include <sstream>
 
 // DuckDB
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/common/file_system.hpp"
+#include "duckdb/common/bswap.hpp"
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/common/serializer/memory_stream.hpp"
 #include "duckdb/common/typedefs.hpp"
@@ -86,6 +88,28 @@ inline static bool IsNoDataValue(const MemoryStream &data_buffer, const size_t d
 	default:
 		throw IOException("Unsupported data type: %d", data_type);
 	}
+}
+
+//! Creates a POINT geometry value from the given x and y coordinates.
+static Value CreatePointGeometryValue(double x, double y) {
+	// NOTE:
+	// This approach uses hard-coded WKB (Well-Known Binary) format for building the geometry instead of WKT.
+	// It avoids the overhead of parsing WKT and gets the best performance possible.
+	//
+	uint8_t wkb[sizeof(uint8_t) + sizeof(uint32_t) + 2 * sizeof(double)] = {1};
+	idx_t offset = 1;
+
+	const auto geometry_type = BSwapIfBE(static_cast<uint32_t>(GeometryType::POINT));
+	const auto x_le = BSwapIfBE(x);
+	const auto y_le = BSwapIfBE(y);
+
+	memcpy(wkb + offset, &geometry_type, sizeof(geometry_type));
+	offset += sizeof(geometry_type);
+	memcpy(wkb + offset, &x_le, sizeof(x_le));
+	offset += sizeof(x_le);
+	memcpy(wkb + offset, &y_le, sizeof(y_le));
+
+	return Value::GEOMETRY(wkb, sizeof(wkb));
 }
 
 //======================================================================================================================
@@ -1505,12 +1529,10 @@ struct RT_ReadCells {
 				}
 			}
 
-			const std::string geometry_wkt = need_geometry ? StringUtil::Format("POINT (%f %f)", ptc.x, ptc.y) : "";
-
 			const CellRow cell_row {Value::BIGINT(row_id + i),
 			                        Value::DOUBLE(ptc.x),
 			                        Value::DOUBLE(ptc.y),
-			                        Value(geometry_wkt),
+			                        need_geometry ? CreatePointGeometryValue(ptc.x, ptc.y) : Value(""),
 			                        Value::INTEGER(offset_x + cell_x),
 			                        Value::INTEGER(offset_y + cell_y)};
 

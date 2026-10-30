@@ -1,6 +1,11 @@
 Release history
 ---------------
 
+1.7.1
+++++++++++++++++++
+
+- Performance improvement of the `RT_ReadCells` function when creating geometry values for the cells.
+
 1.7.0
 ++++++++++++++++++
 
