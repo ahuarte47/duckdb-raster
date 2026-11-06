@@ -26,6 +26,16 @@ SELECT
 ----
 60.0	245.0	158.0	150.0
 
+query IIII
+SELECT
+    RT_RasterValueArray('./test/data/overlay-sample.tiff', 0,   0,   -9999.0) AS v_00,
+    RT_RasterValueArray('./test/data/overlay-sample.tiff', 319, 0,   -9999.0) AS v_10,
+    RT_RasterValueArray('./test/data/overlay-sample.tiff', 319, 179, -9999.0) AS v_11,
+    RT_RasterValueArray('./test/data/overlay-sample.tiff', 0,   179, -9999.0) AS v_01
+;
+----
+[60.0, 44.0, 18.0]	[245.0, 255.0, 241.0]	[158.0, 165.0, 149.0]	[150.0, 148.0, 149.0]
+
 query I
 SELECT
     RT_RasterValues(datacube, 0, [0,319,319,0], [0,0,179,179], -9999.0)
@@ -125,6 +135,17 @@ SELECT
 ;
 ----
 25.0	157.0	153.0	39.0	248.0
+
+query IIIII
+SELECT
+    RT_CoordValueArray('./test/data/overlay-sample.tiff', 545590.06, 4724477.82, -9999.0) AS v_0,
+    RT_CoordValueArray('./test/data/overlay-sample.tiff', 545552.07, 4724442.47, -9999.0) AS v_1,
+    RT_CoordValueArray('./test/data/overlay-sample.tiff', 545668.07, 4724425.39, -9999.0) AS v_2,
+    RT_CoordValueArray('./test/data/overlay-sample.tiff', 545681.47, 4724508.02, -9999.0) AS v_3,
+    RT_CoordValueArray('./test/data/overlay-sample.tiff', 545572.00, 4724462.34, -9999.0) AS v_4
+;
+----
+[25.0, 63.0, 16.0]	[157.0, 157.0, 157.0]	[153.0, 118.0, 36.0]	[39.0, 39.0, 41.0]	[248.0, 250.0, 247.0]
 
 query I
 SELECT
