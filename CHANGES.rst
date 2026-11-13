@@ -1,6 +1,12 @@
 Release history
 ---------------
 
+1.8.1
+++++++++++++++++++
+
+- New `RT_OverviewRasterValueArray` function to return the values in all bands of a raster at the specified pixel coordinates (column, row) and overview level.
+- New `RT_OverviewCoordValueArray` function to return the values in all bands of a raster at the specified world coordinates (x, y) and overview level.
+
 1.8.0
 ++++++++++++++++++
 

@@ -872,6 +872,154 @@ struct RT_RasterValueArray {
 	}
 };
 
+struct RT_OverviewRasterValueArray {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Returns the values in all bands of a filepath at the specified pixel coordinates (column, row) and overview.
+	static void ExecuteForFilePath(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 5);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		auto &client_context = state.GetContext();
+		GDALDatasetUniquePtr dataset;
+		std::string dataset_path;
+
+		for (idx_t i = 0; i < count; i++) {
+			const std::vector<std::string> file_paths = ExtractFilePaths(args.data[0].GetValue(i));
+			const std::string input_path = ConcatFilePaths(file_paths);
+
+			const int32_t overview = args.data[1].GetValue(i).GetValue<int32_t>();
+			int32_t col = args.data[2].GetValue(i).GetValue<int32_t>();
+			int32_t row = args.data[3].GetValue(i).GetValue<int32_t>();
+			const double default_value = args.data[4].GetValue(i).GetValue<double>();
+
+			if (overview < 0) {
+				throw InvalidInputException("Overview level must be non-negative for file[s]: %s", input_path);
+			}
+
+			// Open the dataset if the file path has changed.
+
+			if (dataset_path != input_path) {
+				dataset = GDALDatasetUniquePtr(DuckDBDatasetFactory::OpenDataset(client_context, file_paths, {}));
+				dataset_path = input_path;
+			}
+
+			if (dataset->GetRasterCount() == 0) {
+				throw InvalidInputException("No raster bands found for file[s]: %s", input_path);
+			}
+			if (overview >= dataset->GetRasterBand(1)->GetOverviewCount()) {
+				throw InvalidInputException("Overview level %d is too high for file[s]: %s", overview, input_path);
+			}
+
+			int32_t raster_size_x = dataset->GetRasterXSize();
+			int32_t raster_size_y = dataset->GetRasterYSize();
+
+			col /= (1 << (overview + 1));
+			row /= (1 << (overview + 1));
+			raster_size_x /= (1 << (overview + 1));
+			raster_size_y /= (1 << (overview + 1));
+
+			// Read the value from the all bands at the given pixel coordinates.
+
+			duckdb::vector<Value> values;
+			values.reserve(dataset->GetRasterCount());
+
+			if (col < 0 || row < 0 || col >= raster_size_x || row >= raster_size_y) {
+				for (int32_t band_index = 0; band_index < dataset->GetRasterCount(); band_index++) {
+					values.push_back(Value::DOUBLE(default_value));
+				}
+			} else {
+				for (int32_t band_index = 0; band_index < dataset->GetRasterCount(); band_index++) {
+					GDALRasterBand *band = dataset->GetRasterBand(band_index + 1);
+					if (!band) {
+						values.push_back(Value::DOUBLE(default_value));
+						continue;
+					}
+
+					band = band->GetOverview(overview);
+					if (!band) {
+						values.push_back(Value::DOUBLE(default_value));
+						continue;
+					}
+
+					double value;
+					if (band->RasterIO(GF_Read, col, row, 1, 1, &value, 1, 1, GDT_Float64, 0, 0) != CE_None) {
+						values.push_back(Value::DOUBLE(default_value));
+						continue;
+					}
+
+					values.push_back(Value::DOUBLE(value));
+				}
+			}
+
+			result.SetValue(i, Value::LIST(LogicalType::DOUBLE, std::move(values)));
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Returns the values in all bands of a filepath[s] at the given pixel coordinates (column, row) and overview level (0-based index)
+		as an array of values, one for the specified overview level of each band.
+
+		The function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| [`filepath`, `filepaths`] | [VARCHAR, VARCHAR[]] | The input filepath[s] to the raster[s]. |
+		| `overview` | INTEGER | The overview level to use for reading the raster. |
+		| `col` | INTEGER | The pixel column index within the tile. |
+		| `row` | INTEGER | The pixel row index within the tile. |
+		| `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT RT_OverviewRasterValueArray('some/file/path/filename.tif', 0, 10, 20, -9999.0);
+		SELECT RT_OverviewRasterValueArray(['some/file/path/filename_1.tif', 'some/file/path/filename_2.tif'], 0, 10, 20, -9999.0);
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "RT_OverviewRasterValueArray", [](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("overview", LogicalType::INTEGER);
+				variant.AddParameter("col", LogicalType::INTEGER);
+				variant.AddParameter("row", LogicalType::INTEGER);
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("overview", LogicalType::INTEGER);
+				variant.AddParameter("col", LogicalType::INTEGER);
+				variant.AddParameter("row", LogicalType::INTEGER);
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
+	}
+};
+
 //======================================================================================================================
 // RT_RasterValue_Agg
 //======================================================================================================================
@@ -1962,6 +2110,164 @@ struct RT_CoordValueArray {
 	}
 };
 
+struct RT_OverviewCoordValueArray {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+
+	//! Returns the value in all bands of a filepath at the given world coordinates (x, y) and overview.
+	static void ExecuteForFilePath(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 5);
+		const idx_t count = args.size();
+		args.Flatten();
+
+		auto &client_context = state.GetContext();
+		GDALDatasetUniquePtr dataset;
+		std::string dataset_path;
+
+		for (idx_t i = 0; i < count; i++) {
+			const std::vector<std::string> file_paths = ExtractFilePaths(args.data[0].GetValue(i));
+			const std::string input_path = ConcatFilePaths(file_paths);
+			const double default_value = args.data[4].GetValue(i).GetValue<double>();
+
+			// Validate the input parameters.
+
+			const int32_t overview = args.data[1].GetValue(i).GetValue<int32_t>();
+			const double x = args.data[2].GetValue(i).GetValue<double>();
+			const double y = args.data[3].GetValue(i).GetValue<double>();
+
+			if (overview < 0) {
+				throw InvalidInputException("Overview level must be non-negative for file[s]: %s", input_path);
+			}
+
+			// Open the dataset if the file path has changed.
+
+			if (dataset_path != input_path) {
+				dataset = GDALDatasetUniquePtr(DuckDBDatasetFactory::OpenDataset(client_context, file_paths, {}));
+				dataset_path = input_path;
+			}
+
+			if (dataset->GetRasterCount() == 0) {
+				throw InvalidInputException("No raster bands found for file[s]: %s", input_path);
+			}
+			if (overview >= dataset->GetRasterBand(1)->GetOverviewCount()) {
+				throw InvalidInputException("Overview level %d is too high for file[s]: %s", overview, input_path);
+			}
+
+			double affine[6];
+			if (GDALGetGeoTransform(dataset.get(), affine) != CE_None) {
+				throw InvalidInputException("Failed to get geo transform for file[s]: %s", input_path);
+			}
+
+			RasterCoord coord = RasterUtils::WorldCoordToRasterCoord(affine, x, y);
+			int32_t col = coord.col;
+			int32_t row = coord.row;
+			int32_t raster_size_x = dataset->GetRasterXSize();
+			int32_t raster_size_y = dataset->GetRasterYSize();
+
+			col /= (1 << (overview + 1));
+			row /= (1 << (overview + 1));
+			raster_size_x /= (1 << (overview + 1));
+			raster_size_y /= (1 << (overview + 1));
+
+			// Read the value from the specified band at the given coordinates.
+
+			duckdb::vector<Value> values;
+			values.reserve(dataset->GetRasterCount());
+
+			if (col < 0 || row < 0 || col >= raster_size_x || row >= raster_size_y) {
+				for (int32_t band_index = 0; band_index < dataset->GetRasterCount(); band_index++) {
+					values.push_back(Value::DOUBLE(default_value));
+				}
+			} else {
+				for (int32_t band_index = 0; band_index < dataset->GetRasterCount(); band_index++) {
+					GDALRasterBand *band = dataset->GetRasterBand(band_index + 1);
+					if (!band) {
+						values.push_back(Value::DOUBLE(default_value));
+						continue;
+					}
+
+					band = band->GetOverview(overview);
+					if (!band) {
+						values.push_back(Value::DOUBLE(default_value));
+						continue;
+					}
+
+					double value;
+					if (band->RasterIO(GF_Read, col, row, 1, 1, &value, 1, 1, GDT_Float64, 0, 0) != CE_None) {
+						values.push_back(Value::DOUBLE(default_value));
+						continue;
+					}
+
+					values.push_back(Value::DOUBLE(value));
+				}
+			}
+
+			result.SetValue(i, Value::LIST(LogicalType::DOUBLE, std::move(values)));
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+
+	static constexpr auto DESCRIPTION = R"(
+		Returns the values in all bands of a filepath[s] at the given world coordinates (x, y) and overview level (0-based index)
+		as an array of values, one for the specified overview level of each band.
+
+		The function accepts the following parameters:
+
+		| Parameter | Type | Description |
+		| --------- | -----| ----------- |
+		| [`filepath`, `filepaths`] | [VARCHAR, VARCHAR[]] | The input filepath[s] to the raster[s]. |
+		| `overview` | INTEGER | The overview level of the raster to read (0-based index). |
+		| `x` | DOUBLE | The x-coordinate of the pixel within the tile. |
+		| `y` | DOUBLE | The y-coordinate of the pixel within the tile. |
+		| `default_value` | DOUBLE | The value to return if the specified coordinates are out of bounds. |
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT RT_OverviewCoordValueArray('some/file/path/filename.tif', 0, -1.28, 42.25, -9999.0);
+		SELECT RT_OverviewCoordValueArray(['some/file/path/filename_1.tif', 'some/file/path/filename_2.tif'], 0, -1.28, 42.25, -9999.0);
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "RT_OverviewCoordValueArray", [](ScalarFunctionBuilder &func) {
+			//
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepath", LogicalType::VARCHAR);
+				variant.AddParameter("overview", LogicalType::INTEGER);
+				variant.AddParameter("x", LogicalType::DOUBLE);
+				variant.AddParameter("y", LogicalType::DOUBLE);
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("filepaths", LogicalType::LIST(LogicalType::VARCHAR));
+				variant.AddParameter("overview", LogicalType::INTEGER);
+				variant.AddParameter("x", LogicalType::DOUBLE);
+				variant.AddParameter("y", LogicalType::DOUBLE);
+				variant.AddParameter("default_value", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::LIST(LogicalType::DOUBLE));
+				variant.SetFunction(ExecuteForFilePath);
+				variant.SetVolatile();
+				variant.CanThrowErrors();
+			});
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+			func.SetTag("ext", "raster");
+			func.SetTag("category", "scalar");
+		});
+	}
+};
+
 //======================================================================================================================
 // RT_CoordValue_Agg
 //======================================================================================================================
@@ -2186,10 +2492,12 @@ void RasterValuesFunctions::Register(ExtensionLoader &loader) {
 	RT_RasterValue::Register(loader);
 	RT_RasterValues::Register(loader);
 	RT_RasterValueArray::Register(loader);
+	RT_OverviewRasterValueArray::Register(loader);
 	RT_RasterValue_Agg::Register(loader);
 	RT_CoordValue::Register(loader);
 	RT_CoordValues::Register(loader);
 	RT_CoordValueArray::Register(loader);
+	RT_OverviewCoordValueArray::Register(loader);
 	RT_CoordValue_Agg::Register(loader);
 }
 
