@@ -11,7 +11,7 @@ duckdb_extension_load(raster
 # e.g.: duckdb_extension_load(json)
 duckdb_extension_load(httpfs
     GIT_URL https://github.com/duckdb/duckdb-httpfs
-    GIT_TAG 516ad39e8d147f4e452bb659b129535d575b1b54
+    GIT_TAG e4d1cacf6730f1f19ebda9c3bc6b2af040d1af3f
 )
 
 # Since DuckDB's v2.0-cyanoptera duckdb_extension_load() only decides what is built;
